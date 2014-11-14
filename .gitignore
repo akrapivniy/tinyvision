@@ -1,0 +1,20 @@
+#
+# Normal rules
+#
+.*
+*.o
+*.o.*
+!.gitignore
+
+patches-*
+patches
+series
+autobuild-*
+
+*.orig
+*~
+\#*#
+
+nbproject/
+
+uvc_stream

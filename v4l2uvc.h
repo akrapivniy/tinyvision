@@ -20,6 +20,8 @@
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA    #
 #                                                                              #
 *******************************************************************************/
+#ifndef __V4L2UVC_C__
+#define __V4L2UVC_C__
 
 #include <stdio.h>
 #include <string.h>
@@ -97,3 +99,4 @@ int enum_frame_intervals(int dev, __u32 pixfmt, __u32 width, __u32 height);
 int enum_frame_sizes(int dev, __u32 pixfmt);
 int enum_frame_formats(int dev);
 
+#endif

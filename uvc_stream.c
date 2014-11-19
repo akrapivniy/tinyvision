@@ -181,6 +181,7 @@ void *mind_thread( void *arg ) {
 
     printf("Start thread\n");
     vframe.pixmap = (unsigned int *)pixmap;
+    jtd = tjInitDecompress();
   while (!stop ) {
     /* wait for fresh frames */
     pthread_cond_wait(&db_update, &db);
@@ -189,7 +190,6 @@ void *mind_thread( void *arg ) {
     memcpy(frame, g_buf, frame_size);
     pthread_mutex_unlock( &db );
 
-    jtd = tjInitDecompress();
 
     tjDecompressHeader2(jtd, frame, frame_size, &(vframe.w), &(vframe.h), &jpegss);
     tjBufSizeYUV (vframe.w, vframe.h, jpegss);
@@ -200,8 +200,9 @@ void *mind_thread( void *arg ) {
 		}
 
     vision_frame (&vframe);
-    tjDestroy(jtd);
   }
+
+    tjDestroy(jtd);
 
   free(frame);
   free(pixmap);

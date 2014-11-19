@@ -20,9 +20,9 @@ CFLAGS += -O2 -Wall
 LFLAGS += -lpthread -ldl -lturbojpeg
 
 
-OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o fire.o vision.o
+OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o fire.o vision.o vision_calib.o vision_core.o
 
-all: uga_buga
+all: uga_buga install
 
 clean:
 	@echo "Cleaning up directory."
@@ -37,3 +37,6 @@ uga_buga: $(OBJECTS)
 tgz: clean
 	mkdir -p backups
 	tar czvf ./backups/uvc_streamer_`date +"%Y_%m_%d_%H.%M.%S"`.tgz --exclude backups *
+
+install:
+	./autobuild-puttoserver

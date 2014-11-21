@@ -117,7 +117,7 @@ int vision_calibrate (struct v_calibrate_state *c, struct v_histogram_frame *his
     if (c->full_count>0xfffff) return -1;
 
     for (timeout = 0, y = c->y_threshold, uv = c->uv_threshold; timeout<20; timeout++) {
-	target_count = get_targets (his_frame, target_map, targets, y, uv);
+//	target_count = get_targets (his_frame, target_map, targets, y, uv);
 	if (target_count == 1) break;
 	if (target_count == 0) {
 		    y--;

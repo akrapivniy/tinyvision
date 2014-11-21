@@ -10,11 +10,7 @@
 #include "vision.h"
 
 
-struct v_histogram_storage {
-    int y[VISION_HISTOGRAM_SIZE];
-    int u[VISION_HISTOGRAM_SIZE];
-    int v[VISION_HISTOGRAM_SIZE];
-};
+
 
 struct v_state {
     int use_background;
@@ -39,23 +35,120 @@ struct v_target_lock main_target;
 struct v_calibrate_state calibrate;
 
 
-inline void set_his_storage (struct v_histogram_frame *f, struct v_histogram_storage *s)
+void print_histogram (struct v_histogram_frame *hf)
 {
-    f->u = s->u;
-    f->v = s->v;
-    f->y = s->y;
+	int x ,y, i;
+
+	printf ("\n");
+	for (y = 0; y < hf->h; y++ ) {
+		for (x = 0; x < hf->w; x++ ) {
+			i = y*hf->w+x;
+			printf ("%02x:%02x:%02x-",hf->y[i],hf->v[i],hf->u[i]);
+		}
+		printf ("\n");
+	}
 }
 
-inline void exchange_storage (struct v_histogram_frame *f1, struct v_histogram_frame *f2)
+void print_diff_histogram (struct v_histogram_frame *hf, struct v_histogram_frame *hf2)
 {
-    int *y,*u,*v;
-    u = f1->u;     v = f1->v;     y = f1->y;
-    f1->u = f2->u; f1->v = f2->v; f1->y = f2->y;
-    f2->u = u;     f2->v = v;     f2->y = y;
+	int x ,y, i;
+
+	printf ("\n");
+	for (y = 0; y < hf->h; y++ ) {
+		for (x = 0; x < hf->w; x++ ) {
+			i = y*hf->w+x;
+			printf ("%02x:%02x:%02x-",	abs(hf->y[i] - hf2->y[i]),
+							abs(hf->v[i] - hf2->v[i]),
+							abs(hf->u[i] - hf2->u[i]));
+		}
+		printf ("\n");
+	}
 }
 
 
-int vision_calibrate_init (struct v_calibrate_state *c, int *table, int w, int h);
+void print_best_y (struct v_frame *f)
+{
+	int x ,y, i;
+	unsigned char *pm = f->pixmap;
+	unsigned int minx=0,miny=0,maxx=0,maxy=0;
+	unsigned int min=0xff,max=0;
+
+	printf ("\n");
+	for (y = 0; y < f->h; y++ ) {
+		for (x = 0; x < f->w; x++) {
+			i = y*f->w+x;
+			if (pm[i]>max) {
+				max = pm[i];
+				maxx= x;
+				maxy= y;
+			};
+			if (pm[i]<min) {
+				min = pm[i];
+				minx= x;
+				miny= y;
+			};
+		}
+	}
+	printf ("min %3d = (%3d:%3d); max %3d = (%3d:%3d)",min,minx,miny,max,maxx,maxy);
+	printf ("\n");
+}
+
+
+void print_best_u (struct v_frame *f)
+{
+	int x ,y, i;
+	unsigned int w = f->w;
+	unsigned int h = f->h;
+	unsigned int pixel_size = (w * h);
+	unsigned int y_size = pixel_size>>2;
+	unsigned int u_size = pixel_size>>3;
+	unsigned int *pmy = f->pixmap;
+	unsigned int *pmu = pmy + y_size;
+	unsigned int *pmv = pmu + u_size;
+	unsigned char *pm = pmu;
+	unsigned int minx=0,miny=0,maxx=0,maxy=0;
+	unsigned int min=0xff,max=0;
+
+	printf ("\n");
+	for (y = 0; y < f->h; y++ ) {
+		for (x = 0; x < (f->w/2); x++) {
+			i = y*(f->w/2)+x;
+			if (pm[i]>max) {
+				max = pm[i];
+				maxx= x;
+				maxy= y;
+			};
+			if (pm[i]<min) {
+				min = pm[i];
+				minx= x;
+				miny= y;
+			};
+		}
+	}
+	printf ("min %3d = (%3d:%3d); max %3d = (%3d:%3d)",min,minx,miny,max,maxx,maxy);
+	printf ("\n");
+}
+
+
+void print_histogram_avg_y (struct v_histogram_frame *hf)
+{
+	int x ,y, i;
+	int au ,av, ay;
+
+	printf ("\n");
+	
+	for (x = 0; x < hf->w; x++ ) {
+		au=av=ay=0;
+		for (y = 0; y < hf->h; y++ ) {
+			i = y*hf->w+x;
+			ay+=(hf->v[i]+hf->u[i]+hf->y[i]/2)/4;
+		}
+		printf ("%02x ",ay/hf->h);
+	}
+
+	printf ("\n");
+}
+
 
 int vision_load_fire_table ()
 {
@@ -124,9 +217,8 @@ void vision_tunebackground (struct v_frame *frame)
 	if ((uvdiff<2)&&(ydiff<5)&&(count<((his_frame.w*his_frame.h)/2))) 
 	{
 	    if (vision_state.use_dyn_background == 1) {
-			exchange_storage (&his_dyn_background,&his_background);
+			copy_storage (&his_background, &his_dyn_background);
 			vision_state.tune_background = 0;
-			vision_state.use_dyn_background = 0;
 			vision_state.stable_background = 1;
 			return;
 			}
@@ -149,7 +241,7 @@ int vision_lock_target (struct v_histogram_frame *his_frame)
     int tx = 0, ty = 0, tab;
     static int fx = 0, fy = 0;
 
-    target_count = get_targets (his_frame, &his_background, target_map, targets, 5, 10);
+    target_count = get_targets (his_frame, &his_dyn_background, target_map, targets, 5, 10);
     
     if (target_count == 0) {
 	    fire (fx,fy, 0);
@@ -172,17 +264,24 @@ int vision_lock_target (struct v_histogram_frame *his_frame)
 }
 
 
+void vision_update_background (struct v_histogram_frame *his_frame)
+{
+	copy_avg_histogram (&his_dyn_background, his_frame, 5, 10, 4, 5);
+}
+
 
 
 void vision_frame (struct v_frame *frame)
 {
     int ret;
+    int fl[640]={0};
+    int i;
 
-    if (vision_state.tune_background) {
+ /*   if (vision_state.tune_background) {
 	vision_tunebackground (frame);
 	printf ("Tuning background - %u \n",vision_state.tune_background); fflush(stdout);
 	return;
-    }
+    }*/
     get_his_frame (frame, &his_frame);
 
     if (vision_state.calibrate_mode) {
@@ -196,7 +295,21 @@ void vision_frame (struct v_frame *frame)
 	return;
     }
     
-    if (vision_state.lock_target_mode)
-		vision_lock_target (&his_frame);
+//    if (vision_state.lock_target_mode)
+//		vision_lock_target (&his_frame);
 
+//    vision_update_background (&his_frame);
+//    print_histogram_avg_y (&his_frame);
+//    print_best_u (frame);
+//    print_histogram_avg_x (&his_dyn_background);
+//    print_histogram (&his_frame);
+//    print_diff_histogram (&his_dyn_background,&his_frame);
+    
+     direct_floor_level_min (frame, fl);
+     for (i=0; i<frame->w/8; i++)
+	     printf (" %d",fl[i]);
+     printf ("\n");
+     
 }
+ 
+

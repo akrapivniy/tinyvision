@@ -11,6 +11,28 @@ int abs(int x)
     return ((minus_flag ^ x) - minus_flag);
 }
 
+inline void set_his_storage (struct v_histogram_frame *f, struct v_histogram_storage *s)
+{
+    f->u = s->u;
+    f->v = s->v;
+    f->y = s->y;
+}
+
+inline void exchange_storage (struct v_histogram_frame *f1, struct v_histogram_frame *f2)
+{
+    int *y,*u,*v;
+    u = f1->u;     v = f1->v;     y = f1->y;
+    f1->u = f2->u; f1->v = f2->v; f1->y = f2->y;
+    f2->u = u;     f2->v = v;     f2->y = y;
+}
+
+inline void copy_storage (struct v_histogram_frame *dst, struct v_histogram_frame *src)
+{
+    memcpy (dst->u, src->u, VISION_HISTOGRAM_SIZE * sizeof (int));
+    memcpy (dst->v, src->v, VISION_HISTOGRAM_SIZE * sizeof (int));
+    memcpy (dst->y, src->y, VISION_HISTOGRAM_SIZE * sizeof (int));
+}
+
 
 int compare_histogram (struct v_histogram_frame *f1, struct v_histogram_frame *f2, 
 			unsigned int *uvdiff, unsigned int *ydiff, 
@@ -50,6 +72,151 @@ int compare_histogram (struct v_histogram_frame *f1, struct v_histogram_frame *f
     return count;
 }
 
+int copy_avg_histogram (struct v_histogram_frame *dst, struct v_histogram_frame *src, 
+			int uv_act_threshold, int y_act_threshold, int uv_pass_threshold, int y_pass_threshold)
+{
+    unsigned int i;
+    unsigned int fsize;
+    int *hsrc_u=src->u;
+    int *hsrc_v=src->v;
+    int *hsrc_y=src->y;
+    int *hdst_u=dst->u;
+    int *hdst_v=dst->v;
+    int *hdst_y=dst->y;
+    int diff_u, diff_y, diff_v;
+    int new_u, new_y, new_v;
+
+    fsize = src->w * src->h; //check dst
+
+    for (i=0; i< fsize; i++) {
+	diff_u = abs(hsrc_u[i] - hdst_u[i]);
+	diff_v = abs(hsrc_v[i] - hdst_v[i]);
+	diff_y = abs(hsrc_y[i] - hdst_y[i]);
+
+	if ((diff_u < uv_act_threshold)&&
+	    (diff_v < uv_pass_threshold)&&
+	    (diff_y < uv_pass_threshold))
+		new_u = hdst_u[i] + ((hsrc_u[i] - hdst_u[i])/2);
+	else new_u = hdst_u[i];
+
+	if ((diff_u < uv_pass_threshold)&&
+	    (diff_v < uv_act_threshold)&&
+	    (diff_y < uv_pass_threshold))
+		new_v = hdst_v[i] + ((hsrc_v[i] - hdst_v[i])/2);
+	else new_v = hdst_v[i];
+
+	if ((diff_u < uv_pass_threshold)&&
+	    (diff_v < uv_pass_threshold)&&
+	    (diff_y < uv_act_threshold))
+		new_y = hdst_y[i] + ((hsrc_y[i] - hdst_y[i])/2);
+	else new_y = hdst_y[i];
+	hdst_u[i] = new_u;
+	hdst_v[i] = new_v; 
+	hdst_y[i] = new_y; 
+    }
+
+    return 0;
+}
+
+//middle from 8 px
+int get_floor_h8_y (unsigned int *y, unsigned int w, unsigned int h, int threshold, int *floor_level)
+{
+    unsigned int pixel_size = (w * h);
+    unsigned int y_size = pixel_size>>2;
+    unsigned int floor_size = w >> 3; // every  8x8 pixel
+    unsigned int gy_line_size = (w>>2); // w / bps 
+    unsigned int *_y = y + y_size - gy_line_size;
+    unsigned int floor_avg[VISION_MAX_WIDTH] = {0};
+    unsigned int p, p2, i;
+    int clean, level, diff, his;
+
+    
+	for (i = 0; i < floor_size; i++) {
+		p = *(_y+(i<<1));
+		p2 = *(_y+(i<<1)+1);
+		floor_avg[i]=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+		floor_avg[i]+=(p2&0xff) + ((p2>>8)&0xff) + ((p2>>16)&0xff) + ((p2>>24)&0xff);
+		floor_avg[i]/=8;
+	}
+
+	_y -= gy_line_size;
+	for (level = h - 2; _y > y; _y-=gy_line_size, level--) {
+		clean = 1;    
+        	for (i = 0; i < floor_size; i++) {
+			if (floor_level[i]>level) continue;
+			clean = 0;
+			p = *(_y+(i<<1));
+			p2 = *(_y+(i<<1)+1);
+			his=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+			his+=(p2&0xff) + ((p2>>8)&0xff) + ((p2>>16)&0xff) + ((p2>>24)&0xff);
+			his/=8;
+			diff = his - floor_avg[i];
+			if (abs(diff) > threshold) {
+				floor_level[i] = level;
+			}
+			floor_avg[i]+=diff/4;
+		}
+		if (clean) break;
+	}
+	return 0;
+}
+
+//middle from 8 px
+int get_floor_h8_uv (unsigned int *uv, int w, int h, int threshold, int *floor_level)
+{
+    unsigned int pixel_size = (w * h);
+    unsigned int uv_size = pixel_size>>3;
+    unsigned int floor_size = w >> 3; // every  8x8 pixel
+    unsigned int guv_line_size = (w>>3); // w / bps
+    unsigned int *_uv = uv + uv_size - guv_line_size;
+    int floor_avg[VISION_MAX_WIDTH] = {0};
+    unsigned int p, i;
+    int clean, level, diff, his;
+
+	for (i = 0; i < floor_size; i++) {
+		p = *(_uv+i);
+		floor_avg[i]=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+		floor_avg[i]/=4;
+	}
+
+	_uv -= guv_line_size;
+	for (level = h - 2; _uv > uv; _uv-=guv_line_size, level--) {
+		clean = 1;    
+        	for (i = 0; i < floor_size; i++) {
+			if (floor_level[i]>level) continue;
+			clean = 0;
+			p = *(_uv+i);
+			his=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+			his/=4;
+			diff = his - floor_avg[i];
+			if (abs(diff) > threshold) {
+				floor_level[i] = level;
+			}
+			floor_avg[i]+=diff/4;
+		}
+		if (clean) break;
+	}
+}
+
+
+
+int direct_floor_level_min (struct v_frame *frame, int *floor_level)
+{
+    unsigned int w = frame->w;
+    unsigned int h = frame->h;
+    unsigned int pixel_size = (w * h);
+    unsigned int y_size = pixel_size>>2;
+    unsigned int u_size = pixel_size>>3;
+    unsigned int *y = frame->pixmap;
+    unsigned int *u = y + y_size;
+    unsigned int *v = u + u_size;
+
+    get_floor_h8_y (y, w, h, 30, floor_level);
+    get_floor_h8_uv (v , w, h, 5, floor_level);
+    get_floor_h8_uv (u , w, h, 5, floor_level);
+}
+
+
 void get_his_frame (struct v_frame *frame, struct v_histogram_frame *hframe)
 {
     unsigned int w = frame->w;
@@ -64,7 +231,8 @@ void get_his_frame (struct v_frame *frame, struct v_histogram_frame *hframe)
     int *gu = hframe->u;
     int *gv = hframe->v;
     int *gy = hframe->y;
-    int *_gy, *_gu, *_gv;
+    unsigned int *_gy;
+    int *_gu, *_gv;
     unsigned int gmx = w >> 4; // every  16x16 pixel
     unsigned int gmy = h >> 4; // every  16x16 pixel
     unsigned int cx,cy,p,i;

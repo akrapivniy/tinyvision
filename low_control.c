@@ -8,8 +8,17 @@
 
 
 char *fire_portname = "/dev/ttyATH0";
-int fire_fd;
 
+struct lcontrol {
+	int fd;
+	char user_prio;
+	char user_dir;
+	char user_speed;
+	char vision_dir;
+	char vision_speed;
+};
+
+struct lcontrol control;
 
 int set_interface_attribs (int fd, int speed)
 {
@@ -49,33 +58,100 @@ int set_interface_attribs (int fd, int speed)
         return 0;
 }
 
-
-
-int init_fire ()
+int init_controller()
 {
 int err = 0;
 
- fire_fd = open (fire_portname, O_RDWR | O_NOCTTY | O_SYNC);
- if (fire_fd < 0)
+ control.fd = open (fire_portname, O_RDWR | O_NOCTTY | O_SYNC);
+ if (control.fd < 0)
  {
         printf ("error %d opening %s: %s\n", errno, fire_portname, strerror (errno));
         return -1;
  }
 
- err = set_interface_attribs (fire_fd, B115200);
+ err = set_interface_attribs (control.fd, B115200);
  return err;
 }
 
-
-int fire (int x,int y,int f)
+int motor (int x,int y)
 {
  char buffer[10];
 
  buffer[0]=0x55;
  buffer[1]=x;
  buffer[2]=y;
- buffer[3]=f;
- buffer[4]=0xAA;
- write (fire_fd, buffer , 5);
+ buffer[3]=0xAA;
+ write (control.fd, buffer , 4);
  return 0;
 }
+
+void set_control (char dir, char speed) 
+{
+switch (dir) {
+	case 'F':motor (speed,speed);break;
+	case 'B':motor (-speed,-speed);break;
+
+	case 'L':motor (-speed,speed);break;
+	case 'l':motor (speed/2,speed);break;
+
+	case 'R':motor (speed,-speed);break;
+	case 'r':motor (speed,speed/2);break;
+
+	case 'S': 
+	case   0: 
+	default: motor (0,0);
+}
+}
+
+
+void set_user_control (char dir, char speed)
+{
+	control.user_dir = dir;
+	control.user_speed = speed;
+	if (!control.user_prio) return;
+
+	set_control (dir,speed);
+}
+
+void set_vision_control (char dir, char speed)
+{
+	control.vision_dir = dir;
+	control.vision_speed = speed;
+	if (control.user_prio) return;
+
+	set_control (dir,speed);
+}
+
+void set_control_prio (char user)
+{
+	control.user_prio = user;
+	if (control.user_prio) {
+		set_control (control.user_dir,control.user_speed);   
+	} else {
+		set_control (control.vision_dir,control.vision_speed);   
+	} 
+}
+
+char get_control_prio ()
+{
+	return control.user_prio;
+
+}
+
+unsigned int get_motor_power ()
+{
+	
+}
+
+void get_control_state (char *dir, char *speed) 
+{
+   if (control.user_prio) {
+	*dir = control.user_dir; 
+	*speed = control.user_speed;   
+   } else {
+	*dir = control.vision_dir; 
+	*speed = control.vision_speed;   
+   } 
+}
+
+

@@ -1,0 +1,9 @@
+#!/bin/sh
+
+IFACE="wlan0"
+LIMIT="-82"
+while true; do
+        signal=$(iw $IFACE link | grep signal | awk '{print $2}')
+        [ $signal ] && [ $signal -lt $LIMIT ] && iw $IFACE disconnect
+        sleep 2
+done

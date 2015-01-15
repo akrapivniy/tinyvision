@@ -5,7 +5,7 @@
 #include <fcntl.h>
 
 
-#include "fire.h"
+#include "low_control.h"
 #include "vision_core.h"
 #include "vision_calib.h"
 
@@ -24,7 +24,7 @@ int vision_calibrate_init (struct v_calibrate_state *c, int *table, int w, int h
 	c->direction = 0;
 	c->direction_count = 1;
 	c->direction_loop = 2;
-	fire (c->x, c->y, 1);
+	//fire (c->x, c->y, 1);
 	c->hx = 0;
 	c->hy = 0;
 	c->x_max = 254;
@@ -44,7 +44,7 @@ int vision_calibrate_next_point (struct v_calibrate_state *c)
 	c->y+=c->y_dir;
 
 	c->point_count = 20;
-	fire (c->x, c->y, 1);
+	//fire (c->x, c->y, 1);
 	do {
 		if (c->hy&1) {
 			if (c->hx<=0)
@@ -200,7 +200,7 @@ int vision_calibrate (struct v_calibrate_state *c, struct v_histogram_frame *his
 	(c->x > c->x_max) || (c->y > c->x_max)) {
 	if (vision_calibrate_next_point (c)) return 1;
     }
-    fire (c->x, c->y, 1);
+    //fire (c->x, c->y, 1);
     
     return 0;
 }

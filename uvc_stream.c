@@ -61,7 +61,7 @@
 #include "control.h"
 #include "v4l2uvc.h"
 #include "utils.h"
-#include "fire.h"
+#include "low_control.h"
 #include "vision.h"
 
 #define SOURCE_VERSION "1.3"
@@ -104,37 +104,12 @@ void *client_thread( void *arg ) {
     free(frame);
     return NULL;
   }
-
-  /* find out if we should deliver something other than a stream */
-  read(fd, buffer, sizeof(buffer));
-  if ( strstr(buffer, "snapshot") != NULL ) {
-    answer = SNAPSHOT;
-  }
-
-  if( answer == SNAPSHOT) {
-    sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
-                    "Server: UVC Streamer\r\n" \
-                    "Content-type: image/jpeg\r\n"
-                    "\r\n");
-    cd.snapshot = 0;                
-  } else {
-    sprintf(buffer, "HTTP/1.0 200 OK\r\n" \
-                    "Server: UVC Streamer\r\n" \
-                    "Content-Type: multipart/x-mixed-replace;boundary=" BOUNDARY "\r\n" \
-                    "Cache-Control: no-cache\r\n" \
-                    "Cache-Control: private\r\n" \
-                    "Pragma: no-cache\r\n" \
-                    "\r\n" \
-                    "--" BOUNDARY "\n");
-  }
-  ok = ( write(fd, buffer, strlen(buffer)) >= 0)?1:0;
-
   while ( ok >= 0 && !stop ) {
 
     /* having a problem with windows (do we not always) browsers not updating the 
        stream display, unless the browser cache is disabled - try and implement a delay
        to allow movement to end before streem goes on - kind of works, but not well enough */
-       
+
     if (cd.moved > 0){
       SLEEP(1,0);
       cd.moved = 0;
@@ -148,20 +123,10 @@ void *client_thread( void *arg ) {
 
     pthread_mutex_unlock( &db );
 
-    if ( answer == STREAM ) {
-      sprintf(buffer, "Content-type: image/jpeg\n\n");
-      ok = ( write(fd, buffer, strlen(buffer)) >= 0)?1:0;
-      if( ok < 0 ) break;
-    }
-    
     ok = print_picture(fd, frame, frame_size);
-    if( ok < 0 || answer == SNAPSHOT ) break;
-
-    sprintf(buffer, "\n--" BOUNDARY "\n");
-    ok = ( write(fd, buffer, strlen(buffer)) >= 0)?1:0;
     if( ok < 0 ) break;
-  }
-  
+    }
+
   close(fd);
   free(frame);
 
@@ -510,10 +475,9 @@ int main(int argc, char *argv[])
   pthread_detach(mind);
 
   init_vision ();
-  init_fire ();
-  fire (0,0,0);
+  init_controller ();
 
-  /* start motor control server */
+  /* start control server */
   if (disable_control_port == 0){
     pthread_create(&cntrl, NULL, &uvcstream_control, cdata);
     pthread_detach(cntrl);

@@ -34,6 +34,7 @@ struct v_histogram_frame {
     int *v;
     int *y;
     int w,h;
+    int res_w,res_h;
 };
 
 struct v_frame {

@@ -2,7 +2,7 @@
 #ifndef VISION_CALIB_H
 #define	VISION_CALIB_H
 
-#include "fire.h"
+#include "low_control.h"
 #include "vision_core.h"
 
 struct v_calibrate_state {

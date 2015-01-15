@@ -7,16 +7,26 @@
 #
 ###############################################################
 
+PATH	:= $(PATH):/home/akrapivniy/ml3020/OpenWrt-Toolchain-ar71xx-for-mips_34kc-gcc-4.8-linaro_uClibc-0.9.33.2/toolchain-mips_34kc_gcc-4.8-linaro_uClibc-0.9.33.2/bin
+
+#PREFIX   = mips-openwrt-linux-uclibc-
+#CC = mips-openwrt-linux-uclibc-gcc
+#LD = mips-openwrt-linux-uclibc-ld
+
+CC = gcc
+LD = ld
 
 
-CFLAGS += -O2 -Wall
-LFLAGS += -lpthread -ldl -lturbojpeg
 APP_BINARY=uvc_stream
 
 
-OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o fire.o vision.o vision_calib.o vision_core.o
+CFLAGS += -O2 -Wall
+LFLAGS += -lpthread -ldl -lturbojpeg -lm
 
-all: uga_buga 
+
+OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o low_control.o vision.o vision_calib.o vision_core.o wifi.c vision_map.c vision_floor.c
+
+all: uga_buga install
 
 clean:
 	@echo "Cleaning up directory."
@@ -32,3 +42,5 @@ tgz: clean
 	mkdir -p backups
 	tar czvf ./backups/uvc_streamer_`date +"%Y_%m_%d_%H.%M.%S"`.tgz --exclude backups *
 
+install:
+#	./autobuild-puttoserver

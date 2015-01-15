@@ -4,12 +4,11 @@
 #include <string.h>
 #include <fcntl.h>
 
-#include "fire.h"
+#include "low_control.h"
 #include "vision_calib.h"
 #include "vision_core.h"
+#include "vision_floor.h"
 #include "vision.h"
-
-
 
 
 struct v_state {
@@ -19,11 +18,15 @@ struct v_state {
     int stable_background;
     int calibrate_mode;
     int lock_target_mode;
-
     int table_state;
+	
     int fire_table[VISION_HISTOGRAM_SIZE];
+    struct vision_floor_data floor_data;
 };
 
+struct v_config {
+    int use_background;
+};
 
 struct v_histogram_storage *histogram[VISION_HISTOGRAM_NUMS];
 
@@ -35,7 +38,7 @@ struct v_target_lock main_target;
 struct v_calibrate_state calibrate;
 
 
-void print_histogram (struct v_histogram_frame *hf)
+void print_sframe (struct v_histogram_frame *hf)
 {
 	int x ,y, i;
 
@@ -49,7 +52,7 @@ void print_histogram (struct v_histogram_frame *hf)
 	}
 }
 
-void print_diff_histogram (struct v_histogram_frame *hf, struct v_histogram_frame *hf2)
+void print_diff_sframe (struct v_histogram_frame *hf, struct v_histogram_frame *hf2)
 {
 	int x ,y, i;
 
@@ -65,95 +68,10 @@ void print_diff_histogram (struct v_histogram_frame *hf, struct v_histogram_fram
 	}
 }
 
-
-void print_best_y (struct v_frame *f)
-{
-	int x ,y, i;
-	unsigned char *pm = f->pixmap;
-	unsigned int minx=0,miny=0,maxx=0,maxy=0;
-	unsigned int min=0xff,max=0;
-
-	printf ("\n");
-	for (y = 0; y < f->h; y++ ) {
-		for (x = 0; x < f->w; x++) {
-			i = y*f->w+x;
-			if (pm[i]>max) {
-				max = pm[i];
-				maxx= x;
-				maxy= y;
-			};
-			if (pm[i]<min) {
-				min = pm[i];
-				minx= x;
-				miny= y;
-			};
-		}
-	}
-	printf ("min %3d = (%3d:%3d); max %3d = (%3d:%3d)",min,minx,miny,max,maxx,maxy);
-	printf ("\n");
-}
-
-
-void print_best_u (struct v_frame *f)
-{
-	int x ,y, i;
-	unsigned int w = f->w;
-	unsigned int h = f->h;
-	unsigned int pixel_size = (w * h);
-	unsigned int y_size = pixel_size>>2;
-	unsigned int u_size = pixel_size>>3;
-	unsigned int *pmy = f->pixmap;
-	unsigned int *pmu = pmy + y_size;
-	unsigned int *pmv = pmu + u_size;
-	unsigned char *pm = pmu;
-	unsigned int minx=0,miny=0,maxx=0,maxy=0;
-	unsigned int min=0xff,max=0;
-
-	printf ("\n");
-	for (y = 0; y < f->h; y++ ) {
-		for (x = 0; x < (f->w/2); x++) {
-			i = y*(f->w/2)+x;
-			if (pm[i]>max) {
-				max = pm[i];
-				maxx= x;
-				maxy= y;
-			};
-			if (pm[i]<min) {
-				min = pm[i];
-				minx= x;
-				miny= y;
-			};
-		}
-	}
-	printf ("min %3d = (%3d:%3d); max %3d = (%3d:%3d)",min,minx,miny,max,maxx,maxy);
-	printf ("\n");
-}
-
-
-void print_histogram_avg_y (struct v_histogram_frame *hf)
-{
-	int x ,y, i;
-	int au ,av, ay;
-
-	printf ("\n");
-	
-	for (x = 0; x < hf->w; x++ ) {
-		au=av=ay=0;
-		for (y = 0; y < hf->h; y++ ) {
-			i = y*hf->w+x;
-			ay+=(hf->v[i]+hf->u[i]+hf->y[i]/2)/4;
-		}
-		printf ("%02x ",ay/hf->h);
-	}
-
-	printf ("\n");
-}
-
-
 int vision_load_fire_table ()
 {
 	int fd;
-	fd = open("/usr/share/fire.tbl", O_RDONLY);
+	fd = open("/tmp/fire.tbl", O_RDONLY);
 	if (fd < 0) return -1;
 	read (fd, vision_state.fire_table, VISION_HISTOGRAM_SIZE*sizeof (int));
 	close(fd);
@@ -164,7 +82,7 @@ int vision_load_fire_table ()
 int vision_save_fire_table ()
 {
 	int fd;
-	fd = open("/usr/share/fire.tbl", O_WRONLY|O_CREAT);
+	fd = open("/tmp/fire.tbl", O_WRONLY|O_CREAT);
 	if (fd < 0) return -1;
 	write(fd, vision_state.fire_table, VISION_HISTOGRAM_SIZE*sizeof (int));
 	close(fd);
@@ -188,6 +106,7 @@ int init_vision ()
     memset (&main_target, 0, sizeof (struct v_target_lock));
     vision_state.calibrate_mode = 0;
     vision_state.lock_target_mode = 1;
+    vision_init_floor_data (&vision_state.floor_data);
 //    if (vision_load_fire_table ())
 //    memset (vision_state.fire_table, 0,VISION_HISTOGRAM_SIZE);
 //    vision_calibrate_init (&calibrate, vision_state.fire_table, 640/16,480/16);
@@ -244,7 +163,7 @@ int vision_lock_target (struct v_histogram_frame *his_frame)
     target_count = get_targets (his_frame, &his_dyn_background, target_map, targets, 5, 10);
     
     if (target_count == 0) {
-	    fire (fx,fy, 0);
+	    //fire (fx,fy, 0);
 	    return -1;
     }
     if (!find_target (targets, target_count, &main_target, &tx, &ty))
@@ -259,7 +178,7 @@ int vision_lock_target (struct v_histogram_frame *his_frame)
     fy = 145-(75/his_frame->h)*ty+15;
     
     
-    fire (fx, fy, 1);
+//    fire (fx, fy, 1);
     return 0;
 }
 
@@ -274,17 +193,32 @@ void vision_update_background (struct v_histogram_frame *his_frame)
 void vision_frame (struct v_frame *frame)
 {
     int ret;
-    int fl[640]={0};
-    int i;
+    int i, dist, way, fl_th;
+    int fl[100];
 
- /*   if (vision_state.tune_background) {
+   if (vision_state.tune_background) {
 	vision_tunebackground (frame);
 	printf ("Tuning background - %u \n",vision_state.tune_background); fflush(stdout);
 	return;
-    }*/
+    }
     get_his_frame (frame, &his_frame);
+    vision_get_floor_level (frame,  &vision_state.floor_data, 3);
 
-    if (vision_state.calibrate_mode) {
+    printf ("floor color y = (%d [%d:%d]) v = (%d [%d:%d]) u = (%d [%d:%d]) \n", 
+		vision_state.floor_data.color.avg_y, vision_state.floor_data.color.min_y, vision_state.floor_data.color.max_y,
+		vision_state.floor_data.color.avg_v, vision_state.floor_data.color.min_v, vision_state.floor_data.color.max_v,
+		vision_state.floor_data.color.avg_u, vision_state.floor_data.color.min_u, vision_state.floor_data.color.max_u);
+    
+    for (i=0;i<frame->w/8;i++)
+    {
+	printf (" (%3d-%3d)",vision_state.floor_data.floor_current[i],fl[i]);	 
+    }
+
+    printf (" dist = %d\n",dist);
+
+    
+	    
+/*    if (vision_state.calibrate_mode) {
 	ret = vision_calibrate (&calibrate, &his_frame);
 	printf ("Calibrate loop - %d \n",ret); fflush(stdout);
 	if (ret > 0) {
@@ -294,6 +228,8 @@ void vision_frame (struct v_frame *frame)
 	}
 	return;
     }
+*/
+
     
 //    if (vision_state.lock_target_mode)
 //		vision_lock_target (&his_frame);
@@ -305,11 +241,30 @@ void vision_frame (struct v_frame *frame)
 //    print_histogram (&his_frame);
 //    print_diff_histogram (&his_dyn_background,&his_frame);
     
-     direct_floor_level_min (frame, fl);
-     for (i=0; i<frame->w/8; i++)
-	     printf (" %d",fl[i]);
-     printf ("\n");
-     
-}
- 
 
+    
+/*    
+    if (vision_state.floor_forward_brake) {
+			way = vision_get_way_floor (&vision_state.floor_data);
+			if (way == 0) set_mind_control ('B',50);
+    }
+
+     if ( dist >= frame->h ) {
+		if (vision_state.floor_forward_brake == 0) {
+			disable_forward ();
+			vision_state.floor_forward_brake = 1;
+			way = vision_get_way_floor (&vision_state.floor_data);
+			if (way<0) set_mind_control ('L',60); 
+			else if (way>0) set_mind_control ('R',60);
+			else set_mind_control ('B',50);
+			printf ("Wall ! \n");
+			}
+	} else {
+		if (vision_state.floor_forward_brake ) {
+			enable_forward ();
+			vision_state.floor_forward_brake = 0;
+			set_user_control ();
+			}
+	}
+*/
+}

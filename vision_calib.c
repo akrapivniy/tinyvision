@@ -105,11 +105,11 @@ int vision_calibrate_finish (struct v_calibrate_state *c)
 }
 
 
-int vision_calibrate (struct v_calibrate_state *c, struct v_histogram_frame *his_frame)
+int vision_calibrate (struct v_calibrate_state *c, struct v_sframe *his_frame)
 {
     struct v_target targets[100];
     unsigned int target_count;
-    int target_map[VISION_HISTOGRAM_SIZE];
+    int target_map[VISION_SFRAME_SIZE];
     int timeout,y,uv;
     int i;
 
@@ -186,7 +186,7 @@ int vision_calibrate (struct v_calibrate_state *c, struct v_histogram_frame *his
 			printf ("Found point for (%d:%d) in (%d:%d)\n",targets[0].cx,targets[0].cy, c->x, c->y);
 			if (!c->fire_table[targets[0].cy * c->w + targets[0].cx]) {
 				c->fire_table[targets[0].cy * c->w + targets[0].cx] = (c->x << 8) | c->y;
-				vision_save_fire_table ();
+				vision_save_config ();
 			}
 		}		
     } else {

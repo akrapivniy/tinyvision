@@ -9,22 +9,23 @@
 
 PATH	:= $(PATH):/home/akrapivniy/ml3020/OpenWrt-Toolchain-ar71xx-for-mips_34kc-gcc-4.8-linaro_uClibc-0.9.33.2/toolchain-mips_34kc_gcc-4.8-linaro_uClibc-0.9.33.2/bin
 
-#PREFIX   = mips-openwrt-linux-uclibc-
-#CC = mips-openwrt-linux-uclibc-gcc
-#LD = mips-openwrt-linux-uclibc-ld
+PREFIX   = mips-openwrt-linux-uclibc-
+CC = mips-openwrt-linux-uclibc-gcc
+LD = mips-openwrt-linux-uclibc-ld
 
-CC = gcc
-LD = ld
+#CC = gcc
+#LD = ld
 
 
 APP_BINARY=uvc_stream
 
 
 CFLAGS += -O2 -Wall
-LFLAGS += -lpthread -ldl -lturbojpeg -lm
+LFLAGS += -lpthread -ldl -lturbojpeg -lm -lrt
 
 
-OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o low_control.o vision.o vision_calib.o vision_core.o wifi.c vision_map.c vision_floor.c
+OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o low_control.o \
+	vision.o vision_calib.o vision_core.o wifi.c vision_map.c vision_floor.c vision_sframe.c vision_hist.c vision_control.c
 
 all: uga_buga install
 
@@ -43,4 +44,4 @@ tgz: clean
 	tar czvf ./backups/uvc_streamer_`date +"%Y_%m_%d_%H.%M.%S"`.tgz --exclude backups *
 
 install:
-#	./autobuild-puttoserver
+	./autobuild-puttoserver

@@ -5,6 +5,8 @@
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include "vision_core.h"
+#include "low_control.h"
 
 
 char *fire_portname = "/dev/ttyATH0";
@@ -16,9 +18,24 @@ struct lcontrol {
 	char user_speed;
 	char vision_dir;
 	char vision_speed;
+	int32_t m1;
+	int32_t m2;
+
+	int enable_limit;
+	int32_t limit_m1;
+	int32_t limit_m2;
+	int32_t (*cb_limit)(void *);
+	void *cb_limit_obj;
 };
 
-struct lcontrol control;
+struct lcontrol lc;
+
+
+int32_t lc_power_per_sm[] = {0, 0, 0, 4100,3900,3600,
+3300, 2700, 1850,1350,900};
+int32_t lc_power_per_degree[] = {0, 0, 0, 0, 0, 1700, 
+1100, 1000, 900 , 800, 700};
+
 
 int set_interface_attribs (int fd, int speed)
 {
@@ -62,14 +79,16 @@ int init_controller()
 {
 int err = 0;
 
- control.fd = open (fire_portname, O_RDWR | O_NOCTTY | O_SYNC);
- if (control.fd < 0)
+ memset (&lc, 0, sizeof (struct lcontrol));
+ 
+ lc.fd = open (fire_portname, O_RDWR | O_NOCTTY | O_SYNC);
+ if (lc.fd < 0)
  {
         printf ("error %d opening %s: %s\n", errno, fire_portname, strerror (errno));
         return -1;
  }
 
- err = set_interface_attribs (control.fd, B115200);
+ err = set_interface_attribs (lc.fd, B115200);
  return err;
 }
 
@@ -81,7 +100,10 @@ int motor (int x,int y)
  buffer[1]=x;
  buffer[2]=y;
  buffer[3]=0xAA;
- write (control.fd, buffer , 4);
+	if (lc.fd>0)
+		write (lc.fd, buffer , 4);
+	else 
+		{printf ("[Motor %d:%d ]",x,y); fflush (stdout);}
  return 0;
 }
 
@@ -106,52 +128,206 @@ switch (dir) {
 
 void set_user_control (char dir, char speed)
 {
-	control.user_dir = dir;
-	control.user_speed = speed;
-	if (!control.user_prio) return;
+	lc.user_dir = dir;
+	lc.user_speed = speed;
+//	if (!lc.user_prio) return;
 
 	set_control (dir,speed);
 }
 
 void set_vision_control (char dir, char speed)
 {
-	control.vision_dir = dir;
-	control.vision_speed = speed;
-	if (control.user_prio) return;
+	lc.vision_dir = dir;
+	lc.vision_speed = speed;
+	if (lc.user_prio) return;
 
 	set_control (dir,speed);
 }
 
 void set_control_prio (char user)
 {
-	control.user_prio = user;
-	if (control.user_prio) {
-		set_control (control.user_dir,control.user_speed);   
+	lc.user_prio = user;
+	if (lc.user_prio) {
+		set_control (lc.user_dir,lc.user_speed);   
 	} else {
-		set_control (control.vision_dir,control.vision_speed);   
+		set_control (lc.vision_dir,lc.vision_speed);   
 	} 
 }
 
 char get_control_prio ()
 {
-	return control.user_prio;
+	return lc.user_prio;
 
 }
 
-unsigned int get_motor_power ()
+void get_motor_power (int32_t *m1, int32_t *m2)
 {
-	
+	*m1 = lc.m1;	
+	*m2 = lc.m2;
+}
+
+void reset_motor_power ()
+{
+	lc.m1 = 0;
+	lc.m2 = 0;
 }
 
 void get_control_state (char *dir, char *speed) 
 {
-   if (control.user_prio) {
-	*dir = control.user_dir; 
-	*speed = control.user_speed;   
+   if (lc.user_prio) {
+	*dir = lc.user_dir; 
+	*speed = lc.user_speed;   
    } else {
-	*dir = control.vision_dir; 
-	*speed = control.vision_speed;   
+	*dir = lc.vision_dir; 
+	*speed = lc.vision_speed;   
    } 
 }
 
 
+void enable_limit (int32_t m1, int32_t m2, int32_t (*cb_limit)())
+{
+	lc.limit_m1 = m1;
+	lc.limit_m2 = m2;
+	lc.cb_limit = cb_limit;
+	lc.enable_limit = 1;
+	printf ("limit=%d:%d\n",m1,m2);fflush(stdout);
+}
+
+void disable_limit ()
+{
+	lc.enable_limit = 0;
+}
+
+
+void check_limit ()
+{
+	if (lc.limit_m1) {
+		if (((lc.limit_m1 > 0) && (lc.m1 > lc.limit_m1)) ||
+		    ((lc.limit_m1 < 0) && (lc.m1 < lc.limit_m1))) {
+			motor (0,0);
+			lc.enable_limit = 0;
+			if (lc.cb_limit)
+				lc.cb_limit (lc.cb_limit_obj);
+			return;
+		}
+	}
+
+	if (lc.limit_m2) {
+		if (((lc.limit_m2 > 0) && (lc.m2 > lc.limit_m2)) ||
+		    ((lc.limit_m2 < 0) && (lc.m2 < lc.limit_m2))) {
+			motor (0,0);
+			lc.enable_limit = 0;
+			if (lc.cb_limit)
+				lc.cb_limit (lc.cb_limit_obj);
+			return;
+		}
+	}
+	return;
+}
+
+struct motor_power_message {
+    uint8_t head;
+    int32_t m1;
+    int32_t m2;
+    uint8_t tail;
+} __attribute__((packed));
+
+swap_byte32 (uint32_t val)
+{
+return (((val>>24)&0xff) | // move byte 3 to byte 0
+       ((val<<8)&0xff0000) | // move byte 1 to byte 2
+       ((val>>8)&0xff00) | // move byte 2 to byte 1
+       ((val<<24)&0xff000000)); // byte 0 to byte 3
+}
+
+void uart_control_read_loop () 
+{
+
+	fd_set readfs;    /* file descriptor set */
+        struct timeval tm;
+	int ret,i;
+	uint8_t b;
+	union {
+		uint8_t b[10];
+		struct motor_power_message m;
+	} msg;
+	uint32_t count = 0;
+
+	if (!lc.fd) return;
+	tcflush(lc.fd,TCIOFLUSH);
+	while (1) {
+	       FD_ZERO(&readfs);
+	       FD_SET(lc.fd, &readfs);		
+		/* set timeout value within input loop */
+		tm.tv_usec = 0;  /* milliseconds */
+		tm.tv_sec  = 10;  /* seconds */
+		ret = select(lc.fd+1, &readfs, NULL, NULL, &tm);
+		if (ret==0) 
+			continue;
+		while (read(lc.fd, &b, 1)) {
+			if ((count == 0) && ( b != 0x33 )) continue;
+			msg.b[count] = b;	
+			count ++;
+			if (count == 10) {
+				count = 0;
+				if (b == 0x99) {
+					msg.m.m1=swap_byte32 (msg.m.m1);
+					msg.m.m2=swap_byte32 (msg.m.m2);
+					printf ("m1=%d m2=%d\n",msg.m.m1, msg.m.m2);fflush(stdout);
+					lc.m1 += msg.m.m1;
+					lc.m2 += msg.m.m2;
+					if (lc.enable_limit)
+						check_limit ();
+				}
+			}
+		}
+	
+			
+	}
+	
+}
+
+
+
+void *uart_control_read(void *arg)
+{	
+	uart_control_read_loop ();
+	printf ("Exit from uart read \n");
+	pthread_exit(NULL);
+}
+          
+void motor_set_control (char dir, char speed, int dist, int32_t (*cb_limit)()) 
+{
+	int32_t dk = lc_power_per_sm[speed/10];
+	int32_t ak = lc_power_per_degree[speed/10]; 
+		
+	lc.m1 = 0; lc.m2 = 0;
+	switch (dir) {
+	case 'F':motor (speed,speed);
+		enable_limit (dist*dk,dist*dk, cb_limit);
+		break;
+	case 'B':motor (-speed,-speed);
+		enable_limit (-dist*dk,-dist*dk, cb_limit);
+		break;
+
+	case 'L':motor (-speed,speed);
+		enable_limit (-dist*ak,dist*ak, cb_limit);
+		break;
+	case 'l':motor (speed/2,speed);
+		 enable_limit (0, dist*dk, cb_limit);
+		break;
+
+	case 'R':motor (speed,-speed);
+		  enable_limit (dist*ak,-dist*ak, cb_limit);
+		 break;
+	case 'r':motor (speed,speed/2);
+		  enable_limit (dist*dk, 0, cb_limit);
+		 break;
+
+	case 'S': 
+	case   0: 
+	default:  
+		disable_limit();
+		motor (0,0);
+}
+}

@@ -179,7 +179,7 @@ void *mind_thread( void *arg ) {
 
 /* the single writer thread */
 void *cam_thread( void *arg ) {
-  while( !stop ) {
+   while( !stop ) {
     /* grab a frame */
     if( uvcGrab(cd.videoIn) < 0 ) {
       fprintf(stderr, "Error grabbing\n");
@@ -285,7 +285,7 @@ int main(int argc, char *argv[])
 {
   struct sockaddr_in addr;
   int on=1, disable_control_port = 0;
-  pthread_t client, cam, cntrl, mind;
+  pthread_t client, cam, cntrl, mind, uart_control;
   char *dev = "/dev/video0";
   int fps=5, daemon=0;
 
@@ -468,6 +468,9 @@ int main(int argc, char *argv[])
   /* start to read the camera, push picture buffers into global buffer */
   cd.videoIn->tmpbuffer = (unsigned char *) calloc(1, (size_t)cd.videoIn->framesizeIn);
                   g_buf = (unsigned char *) calloc(1, (size_t)cd.videoIn->framesizeIn);
+  
+  vision_control_init(); //must be first to call;
+
   pthread_create(&cam, 0, cam_thread, NULL);
   pthread_detach(cam);
 
@@ -476,6 +479,9 @@ int main(int argc, char *argv[])
 
   init_vision ();
   init_controller ();
+	  
+  pthread_create(&uart_control, 0, &uart_control_read, NULL);
+  pthread_detach(uart_control);
 
   /* start control server */
   if (disable_control_port == 0){

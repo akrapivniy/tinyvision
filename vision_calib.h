@@ -4,6 +4,7 @@
 
 #include "low_control.h"
 #include "vision_core.h"
+#include "vision_sframe.h"
 
 struct v_calibrate_state {
     int state;
@@ -33,7 +34,7 @@ struct v_calibrate_state {
 };
 
 int vision_calibrate_init (struct v_calibrate_state *c, int *table, int w, int h);
-int vision_calibrate (struct v_calibrate_state *c, struct v_histogram_frame *his_frame);
+int vision_calibrate (struct v_calibrate_state *c, struct v_sframe *his_frame);
 int vision_calibrate_finish (struct v_calibrate_state *c);
 
 

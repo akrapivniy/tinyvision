@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "vision_core.h"
+#include "vision_sframe.h"
 #include "vision_floor.h"
 
 int vision_init_floor_data (struct vision_floor_data *fd)
@@ -28,7 +29,7 @@ int get_floor_h8_y (unsigned int *y, unsigned int w, unsigned int h, int thresho
     unsigned int *_y = y + y_size - gy_line_size;
     unsigned int floor_avg[VISION_MAX_WIDTH] = {0};
     unsigned int p, p2, i;
-    int clean, level, diff, his;
+    int clean, level, diff, avg;
 
     
 	for (i = 0; i < floor_size; i++) {
@@ -47,10 +48,10 @@ int get_floor_h8_y (unsigned int *y, unsigned int w, unsigned int h, int thresho
 			clean = 0;
 			p = *(_y+(i<<1));
 			p2 = *(_y+(i<<1)+1);
-			his=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
-			his+=(p2&0xff) + ((p2>>8)&0xff) + ((p2>>16)&0xff) + ((p2>>24)&0xff);
-			his/=8;
-			diff = his - floor_avg[i];
+			avg=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+			avg+=(p2&0xff) + ((p2>>8)&0xff) + ((p2>>16)&0xff) + ((p2>>24)&0xff);
+			avg/=8;
+			diff = avg - floor_avg[i];
 			if (abs(diff) > threshold) {
 				floor_level[i] = level;
 			}
@@ -71,7 +72,7 @@ int get_floor_h8_uv (unsigned int *uv, int w, int h, int threshold, int *floor_l
     unsigned int *_uv = uv + uv_size - guv_line_size;
     int floor_avg[VISION_MAX_WIDTH] = {0};
     unsigned int p, i;
-    int clean, level, diff, his;
+    int clean, level, diff, avg;
 
 	for (i = 0; i < floor_size; i++) {
 		p = *(_uv+i);
@@ -86,9 +87,9 @@ int get_floor_h8_uv (unsigned int *uv, int w, int h, int threshold, int *floor_l
 			if (floor_level[i]>level) continue;
 			clean = 0;
 			p = *(_uv+i);
-			his=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
-			his/=4;
-			diff = his - floor_avg[i];
+			avg=(p&0xff) + ((p>>8)&0xff) + ((p>>16)&0xff) + ((p>>24)&0xff);
+			avg/=4;
+			diff = avg - floor_avg[i];
 			if (abs(diff) > threshold) {
 				floor_level[i] = level;
 			}
@@ -116,7 +117,7 @@ int direct_floor_level_min (struct v_frame *frame, int *floor_level)
     return 0;
 }
 
-int direct_hyst_floor_level_min (struct v_histogram_frame *hf, struct vision_floor_color *color, int *floor_level)
+int direct_color_floor_level_min (struct v_sframe *hf, struct vision_floor_color *color, int *floor_level)
 {
     unsigned int hw = hf->w;
     unsigned int hh = hf->h;
@@ -158,8 +159,43 @@ int direct_hyst_floor_level_min (struct v_histogram_frame *hf, struct vision_flo
     
 }
 
+int direct_hyst_floor_level_min (struct v_histogram *hf, struct vision_floor_histogram *hist , int *floor_level)
+{
+    unsigned int hw = hf->w;
+    unsigned int hh = hf->h;
+    unsigned int h_size = hw*hh;
+    unsigned int w = hw*hf->res_w;
+    unsigned int h = hh*hf->res_h;
+    struct histogram8 *y = hf->y + h_size-1;
+    struct histogram8 *u = hf->u + h_size-1;
+    struct histogram8 *v = hf->v + h_size-1;
+    unsigned int level, i, fl;
+    
+    
+    memset (floor_level,0,w/8 * 4);
+    for (level = hh; level > 0; level--) 
+	    for (i = hw; i > 0; i--, y--, u--, v--) {
+		fl=(i-1)*2;
+		if (floor_level[fl]) continue;
+		if (compare_histogram(y, &hist->y[i-1]) > 20) {
+			floor_level[fl] = floor_level[fl+1] = level*hf->res_h+8;
+			continue;
+		}
+		if (compare_histogram(u, &hist->u[i-1]) > 10) {
+			floor_level[fl] = floor_level[fl+1] = level*hf->res_h+8;
+			continue;
+		}
+		if (compare_histogram(v, &hist->v[i-1]) > 10) {
+			floor_level[fl] = floor_level[fl+1] = level*hf->res_h+8;
+			continue;
+		}
+	    }
+    
+}
 
-int direct_floor_color (struct v_frame *frame, int *floor_level, struct vision_floor_color *color)
+
+
+int direct_floor_color (struct v_frame *frame, int *floor_level, struct vision_floor_histogram *fh, struct vision_floor_color *color)
 {
     unsigned int w = frame->w;
     unsigned int h = frame->h;
@@ -175,69 +211,105 @@ int direct_floor_color (struct v_frame *frame, int *floor_level, struct vision_f
     unsigned int *_y = y;
     unsigned int *_u = u;
     unsigned int *_v = v;
+    unsigned int i, i2;
+    int level, _level, count = 0;
+    union int32_u  p;    
+    struct histogram32 fly[VISION_HISTOGRAM_MAX_WIDTH]={0};
+    struct histogram32 flu[VISION_HISTOGRAM_MAX_WIDTH]={0};
+    struct histogram32 flv[VISION_HISTOGRAM_MAX_WIDTH]={0};
     unsigned int avg_y = 0, avg_count = 0;
     unsigned int avg_u = 0; 
     unsigned int avg_v = 0; 
-    unsigned int i, i2;
-    int level;
-    union {
-	unsigned int i;
-	unsigned char b[4];
-    } py,py2, pv, pu;    
-
+    
+    
     for (i = 0, level = 0; i < floor_size; i++) 
 	    if (floor_level[i] > level) level = floor_level[i];
 
-    printf ("max level = %3d ", level);
-    
+    level++;
+    _level = (h-level)/16;
+    if (_level == 0 ) return 0;
+    level = h - (_level*16);
+   
     _y = y + gy_line_size * level;
     _u = u + guv_line_size * level;
     _v = v + guv_line_size * level;
-    color->min_u = *_y; color->min_v = *_v; color->min_y = *_u;
-    color->max_u = *_y; color->max_v = *_v; color->max_y = *_u;
-    color->avg_u = 0; color->avg_v = 0; color->avg_y = 0;
+    
+    memset (fh,0,sizeof (struct vision_floor_histogram));
     for (;level<h ; level++) {
         	for (i = 0; i < floor_size; i++, _y+=2, _v++, _u++ ) {
-			if (floor_level[i]+10>level) continue;
-			py.i = *_y;
-			py2.i = *_y+1;
+			p.u32 = *_y;
+			fly[i>>1].h[p.u8[0]>>5]++;
+			fly[i>>1].h[p.u8[2]>>5]++;
 			for (i2=0;i2<4;i2++) {
-				if (color->max_y < py.b[i2])
-					color->max_y=(color->max_y+py.b[i2])/2;
-				if (color->min_y > py.b[i2])
-					color->min_y=(color->min_y+py.b[i2])/2;
-				if (color->max_y < py2.b[i2])
-					color->max_y=(color->max_y+py2.b[i2])/2;
-				if (color->min_y > py2.b[i2])
-					color->min_y=(color->min_y+py2.b[i2])/2;
-				avg_y+=py.b[i2]+py2.b[i2];
+				if (color->max_y < p.u8[i2])
+					color->max_y=(color->max_y+p.u8[i2])/2;
+				if (color->min_y > p.u8[i2])
+					color->min_y=(color->min_y+p.u8[i2])/2;
+				avg_y+=p.u8[i2];
 			}
-			pv.i = *_v;
+			p.u32 = *_y+1;
+			fly[i>>1].h[p.u8[0]>>5]++;
+			fly[i>>1].h[p.u8[2]>>5]++;
 			for (i2=0;i2<4;i2++) {
-				if (color->max_v < pv.b[i2])
-					color->max_v= (color->max_v+pv.b[i2])/2;
-				if (color->min_v > pv.b[i2])
-					color->min_v= (color->min_v+pv.b[i2])/2;
-				avg_v+=pv.b[i2]*2;
+				if (color->max_y < p.u8[i2])
+					color->max_y=(color->max_y+p.u8[i2])/2;
+				if (color->min_y > p.u8[i2])
+					color->min_y=(color->min_y+p.u8[i2])/2;
+				avg_y+=p.u8[i2];
 			}
-			pu.i = *_u;
+			p.u32 = *_v;
+			flv[i>>1].h[p.u8[0]>>5]++;
+			flv[i>>1].h[p.u8[1]>>5]++;
+			flv[i>>1].h[p.u8[2]>>5]++;
+			flv[i>>1].h[p.u8[3]>>5]++;
 			for (i2=0;i2<4;i2++) {
-				if (color->max_u < pu.b[i2])
-					color->max_u=(color->max_u+pu.b[i2])/2;
-				if (color->min_u > pu.b[i2])
-					color->min_u=(color->min_u+pu.b[i2])/2;;
-				avg_u+=pu.b[i2]*2;
+				if (color->max_v < p.u8[i2])
+					color->max_v= (color->max_v+p.u8[i2])/2;
+				if (color->min_v > p.u8[i2])
+					color->min_v= (color->min_v+p.u8[i2])/2;
+				avg_v+=p.u8[i2]*2;
+			}
+			p.u32 = *_u;
+			flu[i>>1].h[p.u8[0]>>5]++;
+			flu[i>>1].h[p.u8[1]>>5]++;
+			flu[i>>1].h[p.u8[2]>>5]++;
+			flu[i>>1].h[p.u8[3]>>5]++;
+			for (i2=0;i2<4;i2++) {
+				if (color->max_u < p.u8[i2])
+					color->max_u=(color->max_u+p.u8[i2])/2;
+				if (color->min_u > p.u8[i2])
+					color->min_u=(color->min_u+p.u8[i2])/2;;
+				avg_u+=p.u8[i2]*2;
 			}
 			avg_count+=8;
+
+
+
+
+
 		}
 	}
-	if (avg_count) {
+
+    for (i = 0; i < w/16; i++) {
+		for (i2 = 0; i2 < 8; i2++) {
+			fh->y[i].h[i2] = fly[i].h[i2] / _level;
+			fh->u[i].h[i2] = flu[i].h[i2] / _level;
+			fh->v[i].h[i2] = flv[i].h[i2] / _level;
+		}
+	}	
+    if (avg_count) {
 		color->avg_y = avg_y / avg_count;
 		color->avg_u = avg_u / avg_count;
 		color->avg_v = avg_v / avg_count;
 	}
-	return 0;
+    return 0;
 }
+
+
+
+
+
+
 
 void exchange_floor_data (struct vision_floor_data *fd)
 {

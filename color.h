@@ -16,17 +16,19 @@
 # along with this program; if not, write to the Free Software               #
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA #
 #                                                                           #
-****************************************************************************/ 
+ ****************************************************************************/
 typedef struct Myrgb16 {
-	unsigned short blue:5;
-	unsigned short green:6;
-	unsigned short red:5;
+	unsigned short blue : 5;
+	unsigned short green : 6;
+	unsigned short red : 5;
 } Myrgb16;
+
 typedef struct Myrgb24 {
 	unsigned char blue;
 	unsigned char green;
 	unsigned char red;
 } Myrgb24;
+
 typedef struct Myrgb32 {
 	unsigned char blue;
 	unsigned char green;

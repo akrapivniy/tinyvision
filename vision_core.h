@@ -8,26 +8,31 @@
 #ifndef VISION_CORE_H
 #define	VISION_CORE_H
 
+extern float sin_table_degree[360];
+extern float cos_table_degree[360];
+
+
 #define VISION_MAX_WIDTH 640
 #define VISION_MAX_HEIGHT 480
 
-typedef signed char 	int8_t;
-typedef unsigned char 	uint8_t;
-typedef signed int 	int32_t;
-typedef unsigned int 	uint32_t;
+typedef signed char int8_t;
+typedef unsigned char uint8_t;
+typedef signed int int32_t;
+typedef unsigned int uint32_t;
 
 union int32_u {
 	uint32_t u32;
-	uint8_t  u8[4];
-};  
+	uint8_t u8[4];
+};
 
 struct v_frame {
-    unsigned int *pixmap;
-    int w;
-    int h;
+	unsigned int *pixmap;
+	int w;
+	int h;
 };
 
 int abs(int x);
+void vision_core_init();
 
 #endif	/* VISION_CORE_H */
 

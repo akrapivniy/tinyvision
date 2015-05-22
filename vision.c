@@ -11,32 +11,54 @@
 #include "vision_sframe.h"
 #include "vision_hist.h"
 #include "vision_control.h"
+#include "vision_map.h"
+#include "vision_hide.h"
+#include "vision_target.h"
 #include "vision.h"
 
 
-struct v_state {
-    int tune_background;
-    int use_background;
-    int use_dyn_background;
-    int stable_background;
-   
-    int save_floor_color;
-    int use_floor_color;
-    struct vision_floor_data floor_data;
+#define VISION_MODE_BACKGROUND	 (1<<0)
+#define VISION_MODE_HIDE	 (1<<1)
+#define VISION_MODE_USERCONTROL	 (1<<2)
+#define VISION_MODE_TESTWALL	 (1<<3)
+#define VISION_MODE_FWDWALL	 (1<<4)
+#define VISION_MODE_IDLE	 (1<<5)
+#define VISION_MODE_FOLLOWME	 (1<<6)
 
-    int calibrate_mode;
-    int lock_target_mode;
-    int table_state;
+#define VISION_SET_MODE(var,mode) var |= mode;
+#define VISION_RESET_MODE(var,mode) var &= ~mode;
+
+struct v_state {
+	uint32_t mode;
+
+	int tune_background;
+	int use_background;
+	int use_dyn_background;
+
+	int test_wall_timeout;
+	int test_wall_state;
+
+	int check_background_state;
+
+	int idle_timeout;
+
+	int save_floor_color;
+	int use_floor_color;
+	struct vision_floor_data floor_data;
+
+	int calibrate_mode;
+	int lock_target_mode;
+	int table_state;
+	int old_direction;
 };
 
-
-
 struct v_config {
-    int use_background;
+	int use_background;
 };
 
 struct v_sframe_storage *sframe[VISION_SFRAME_NUMS];
 struct v_sframe sf_dyn_background;
+struct v_sframe sf_lastframe;
 struct v_sframe sf_background;
 struct v_sframe sf_frame;
 struct v_histogram_storage hist_frame;
@@ -44,205 +66,408 @@ struct v_histogram_storage hist_frame;
 struct v_state vstate;
 struct v_config vconfig;
 
-
-void print_hist (struct v_histogram *hf)
+void print_hist(struct v_histogram *hf)
 {
-	int x ,y, i;
+	int x, y, i;
 
-	printf ("\n");
-	for (y = 0; y < hf->h; y++ ) {
-		for (x = 0; x < hf->w; x++ ) {
-			i = y*hf->w+x;
-			printf ("(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x)-",
-				hf->y[i].h[0],hf->y[i].h[1],hf->y[i].h[2],hf->y[i].h[3],hf->y[i].h[4],hf->y[i].h[5],hf->y[i].h[6],hf->y[i].h[7],
-				hf->v[i].h[0],hf->v[i].h[1],hf->v[i].h[2],hf->v[i].h[3],hf->v[i].h[4],hf->v[i].h[5],hf->v[i].h[6],hf->v[i].h[7],
-				hf->u[i].h[0],hf->u[i].h[1],hf->u[i].h[2],hf->u[i].h[3],hf->u[i].h[4],hf->u[i].h[5],hf->u[i].h[6],hf->u[i].h[7]);
+	printf("\n");
+	for (y = 0; y < hf->h; y++) {
+		for (x = 0; x < hf->w; x++) {
+			i = y * hf->w + x;
+			printf("(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x)-",
+				hf->y[i].h[0], hf->y[i].h[1], hf->y[i].h[2], hf->y[i].h[3], hf->y[i].h[4], hf->y[i].h[5], hf->y[i].h[6], hf->y[i].h[7],
+				hf->v[i].h[0], hf->v[i].h[1], hf->v[i].h[2], hf->v[i].h[3], hf->v[i].h[4], hf->v[i].h[5], hf->v[i].h[6], hf->v[i].h[7],
+				hf->u[i].h[0], hf->u[i].h[1], hf->u[i].h[2], hf->u[i].h[3], hf->u[i].h[4], hf->u[i].h[5], hf->u[i].h[6], hf->u[i].h[7]);
 		}
-		printf ("\n");
+		printf("\n");
 	}
 }
 
-
-void print_sframe (struct v_sframe *hf)
+void print_sframe(struct v_sframe *hf)
 {
-	int x ,y, i;
+	int x, y, i;
 
-	printf ("\n");
-	for (y = 0; y < hf->h; y++ ) {
-		for (x = 0; x < hf->w; x++ ) {
-			i = y*hf->w+x;
-			printf ("%02x:%02x:%02x-",hf->y[i],hf->v[i],hf->u[i]);
+	printf("\n");
+	for (y = 0; y < hf->h; y++) {
+		for (x = 0; x < hf->w; x++) {
+			i = y * hf->w + x;
+			printf("%02x:%02x:%02x-", hf->y[i], hf->v[i], hf->u[i]);
 		}
-		printf ("\n");
+		printf("\n");
 	}
 }
 
-void print_diff_sframe (struct v_sframe *hf, struct v_sframe *hf2)
+void print_diff_sframe(struct v_sframe *hf, struct v_sframe *hf2)
 {
-	int x ,y, i;
+	int x, y, i;
 
-	printf ("\n");
-	for (y = 0; y < hf->h; y++ ) {
-		for (x = 0; x < hf->w; x++ ) {
-			i = y*hf->w+x;
-			printf ("%02x:%02x:%02x-",	abs(hf->y[i] - hf2->y[i]),
-							abs(hf->v[i] - hf2->v[i]),
-							abs(hf->u[i] - hf2->u[i]));
+	printf("\n");
+	for (y = 0; y < hf->h; y++) {
+		for (x = 0; x < hf->w; x++) {
+			i = y * hf->w + x;
+			printf("%02x:%02x:%02x-", abs(hf->y[i] - hf2->y[i]),
+				abs(hf->v[i] - hf2->v[i]),
+				abs(hf->u[i] - hf2->u[i]));
 		}
-		printf ("\n");
+		printf("\n");
 	}
 }
 
-int vision_load_config ()
+int vision_load_config()
 {
 	int fd;
 	fd = open("/tmp/vision.config", O_RDONLY);
 	if (fd < 0) return -1;
-	read (fd, &vconfig, sizeof (struct v_config));
+	read(fd, &vconfig, sizeof(struct v_config));
 	close(fd);
-	printf ("Load config from file\n");
+	printf("Load config from file\n");
 	return 0;
 }
 
-int vision_save_config ()
+int vision_save_config()
 {
 	int fd;
-	fd = open("/tmp/vision.config", O_WRONLY|O_CREAT);
+	fd = open("/tmp/vision.config", O_WRONLY | O_CREAT);
 	if (fd < 0) return -1;
-	write(fd, &vconfig, sizeof (struct v_config));
+	write(fd, &vconfig, sizeof(struct v_config));
 	close(fd);
-	printf ("Save config to file\n");
+	printf("Save config to file\n");
 	return 0;
 }
 
-
-int init_vision ()
+int init_vision()
 {
-    int i;
-    for (i = 0; i < VISION_SFRAME_NUMS; i++)
-	sframe[i] = malloc(sizeof (struct v_sframe_storage));
+	int i;
 
-    set_sframe_storage (&sf_background, sframe[0]);
-    set_sframe_storage (&sf_dyn_background, sframe[1]);
-    set_sframe_storage (&sf_frame, sframe[2]);
+	vision_core_init();
 
-    vstate.tune_background = 60;
-    vstate.use_background = 0;
-    vstate.use_dyn_background = 0;
+	for (i = 0; i < VISION_SFRAME_NUMS; i++)
+		sframe[i] = malloc(sizeof(struct v_sframe_storage));
 
-    vstate.calibrate_mode = 0;
-    vstate.lock_target_mode = 1;
-    vision_init_floor_data (&vstate.floor_data);
-//    if (vision_load_config ())
-//		memset (&vision_config, 0, sizeof (struct v_config));
-    return 0;
+	set_sframe_storage(&sf_background, sframe[0]);
+	set_sframe_storage(&sf_dyn_background, sframe[1]);
+	set_sframe_storage(&sf_lastframe, sframe[2]);
+	set_sframe_storage(&sf_frame, sframe[3]);
+
+	vstate.tune_background = 60;
+	vstate.use_background = 0;
+	vstate.use_dyn_background = 0;
+
+	vstate.old_direction = 'S';
+	vstate.mode = 0;
+
+	vision_mode_background_init();
+	vision_init_floor_data(&vstate.floor_data);
+	//    if (vision_load_config ())
+	//		memset (&vision_config, 0, sizeof (struct v_config));
+
+	vision_map_init();
+	return 0;
 }
 
-
-void vision_tunebackground (struct v_frame *frame)
+void vision_tunebackground(struct v_sframe *sframe)
 {
 	unsigned count, uvdiff, ydiff;
 
-        if (!vstate.use_background) {
-		get_sframe (frame, &sf_background);
+	if (!vstate.use_background) {
+		copy_storage(&sf_background, sframe);
 		vstate.use_background = 1;
 		return;
-	} 
-        if (!vstate.use_dyn_background) {
-		get_sframe (frame, &sf_dyn_background);
+	}
+	if (!vstate.use_dyn_background) {
+		copy_storage(&sf_dyn_background, sframe);
 		vstate.use_dyn_background = 10;
 		return;
 	}
-	vstate.stable_background = 0;
-	vstate.tune_background --;
-	get_sframe (frame, &sf_frame);
-	count = compare_sframe (&sf_frame, &sf_dyn_background,  &uvdiff , &ydiff,5 ,20);
 
-	if ((uvdiff<2)&&(ydiff<5)&&(count<((sf_frame.w*sf_frame.h)/2))) 
-	{
-	    if (vstate.use_dyn_background == 1) {
-			copy_storage (&sf_background, &sf_dyn_background);
+	vstate.tune_background--;
+
+	count = compare_sframe(sframe, &sf_dyn_background, &uvdiff, &ydiff, 5, 20);
+
+	printf("count = %d \n", count);
+	fflush(stdout);
+
+	if ((uvdiff < 2)&&(ydiff < 5)&&(count < ((sframe->w * sframe->h) / 2))) {
+		if (vstate.use_dyn_background == 1) {
+			copy_storage(&sf_background, &sf_dyn_background);
 			vstate.tune_background = 0;
-			vstate.stable_background = 1;
 			return;
-			}
-	    printf ("+");fflush (stdout);
-	    vstate.use_dyn_background --;
-	    return;
+		}
+		printf("+");
+		fflush(stdout);
+		vstate.use_dyn_background--;
+		return;
 	} else {
-	    vstate.use_dyn_background = 20;
-	    exchange_storage (&sf_dyn_background,&sf_frame);
-	    printf ("-");fflush (stdout);
+		vstate.use_dyn_background = 20;
+		exchange_storage(&sf_dyn_background, sframe);
+		printf("-");
+		fflush(stdout);
 	}
 }
 
-void vision_update_background (struct v_sframe *his_frame)
+void vision_update_background(struct v_sframe *his_frame)
 {
-	copy_avg_sframe (&sf_dyn_background, his_frame, 5, 10, 4, 5);
+	copy_avg_sframe(&sf_dyn_background, his_frame, 5, 10, 4, 5);
 }
 
-void vision_frame (struct v_frame *frame)
+void vision_emergence_stop()
 {
-    int ret;
-    int i, dist, way, fl_th;
-    char dir, speed;
-    LLIST_STRUCT f,f2;
 
-   if (vstate.tune_background) {
-	vision_tunebackground (frame);
-	printf ("Tuning background - %u \n",vstate.tune_background); fflush(stdout);
-	return;
-    }
-//    get_histogram (frame, &hframe);
+}
 
-/*   if (vstate.use_floor_color) {
-    direct_hyst_floor_level_min (&hframe, &vstate.floor_data.hist,fl);
-   } else 
- */
+void vision_check_obstructions(struct v_frame *frame, uint32_t *wl, uint32_t *wf, uint32_t *wr)
+{
+	vision_get_floor_level(frame, &vstate.floor_data, 3);
+	vision_get_wall_from_floor(&vstate.floor_data, wl, wf, wr);
 
-    vision_get_floor_level (frame,  &vstate.floor_data, 3);
+	printf("[%d:%d:%d]", *wl, *wf, *wr);
+	fflush(stdout);
+	if (*wl > (vstate.floor_data.h - 2))
+		*wl = 1;
+	else *wl = 0;
+	if (*wf > (vstate.floor_data.h - 2))
+		*wf = 1;
+	else *wf = 0;
+	if (*wr > (vstate.floor_data.h - 2))
+		*wr = 1;
+	else *wr = 0;
+	vision_map_set_near_wall(*wl, *wf, *wr);
 
-/*
-    for (i=0;i<frame->w/8;i++)
-    {
-	printf (" (%3d-%3d)",vstate.floor_data.floor_current[i],fl[i]);	 
-    }
-	printf ("\n");
+}
+
+void vision_check_background(struct v_sframe *sframe)
+{
+	unsigned count, uvdiff, ydiff;
+
+	count = compare_sframe(sframe, &sf_lastframe, &uvdiff, &ydiff, 2, 5);
+	copy_storage(&sf_lastframe, sframe);
+	printf("vision_check_background count=%d, uvdiff=%d,  ydiff=%d \n", count, uvdiff, ydiff);
+	fflush(stdout);
+
+	if (count < 5)
+		vstate.check_background_state++;
+	else
+		vstate.check_background_state = 0;
 
 
-   if (vstate.save_floor_color) {
-	get_control_state (&dir, &speed);
-	if (dir == 'S')  {
-		direct_floor_color (frame, vstate.floor_data.floor_current, &vstate.floor_data.hist, &vstate.floor_data.color);
-		vstate.use_floor_color = 1;
-	} else {
-				
+	if (vstate.check_background_state > 5) {
+		vision_control_task_dangerous();
+		VISION_SET_MODE(vstate.mode, VISION_MODE_FWDWALL);
+		printf("vision_check_background ALERT! \n");
+		fflush(stdout);
 	}
-   }    
-*/	
-	
-/*    
-    hf = &vision_state.floor_data.hist;
-    for (i = 0; i < frame->w/16; i++ ) {
-		printf ("(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x):(%02x%02x%02x%02x%02x%02x%02x%02x)-",
-			hf->y[i].h[0],hf->y[i].h[1],hf->y[i].h[2],hf->y[i].h[3],hf->y[i].h[4],hf->y[i].h[5],hf->y[i].h[6],hf->y[i].h[7],
-			hf->v[i].h[0],hf->v[i].h[1],hf->v[i].h[2],hf->v[i].h[3],hf->v[i].h[4],hf->v[i].h[5],hf->v[i].h[6],hf->v[i].h[7],
-			hf->u[i].h[0],hf->u[i].h[1],hf->u[i].h[2],hf->u[i].h[3],hf->u[i].h[4],hf->u[i].h[5],hf->u[i].h[6],hf->u[i].h[7]);
-    }   
-	printf ("\n");
 
-    vision_get_floor_level (frame,  &vision_state.floor_data, 3);
+}
 
-    printf ("floor color y = (%d [%d:%d]) v = (%d [%d:%d]) u = (%d [%d:%d]) \n", 
-		vision_state.floor_data.color.avg_y, vision_state.floor_data.color.min_y, vision_state.floor_data.color.max_y,
-		vision_state.floor_data.color.avg_v, vision_state.floor_data.color.min_v, vision_state.floor_data.color.max_v,
-		vision_state.floor_data.color.avg_u, vision_state.floor_data.color.min_u, vision_state.floor_data.color.max_u);
-    
-    for (i=0;i<frame->w/8;i++)
-    {
-	printf (" (%3d-%3d)",vision_state.floor_data.floor_current[i],fl[i]);	 
-    }
+void vision_mode_test_obstructions_init()
+{
+	printf("vision_mode_test_obstructions_init \n");
+	fflush(stdout);
 
-    printf (" dist = %d\n",dist);
-*/
+	if (vstate.test_wall_timeout) {
+		vstate.test_wall_timeout--;
+		return;
+	}
+
+	VISION_SET_MODE(vstate.mode, VISION_MODE_TESTWALL);
+	vision_control_task_pause();
+	vstate.test_wall_timeout = 5;
+	vstate.test_wall_state = 0;
+}
+
+void vision_mode_test_obstructions(struct v_frame *frame)
+{
+	uint32_t wl, wf, wr;
+
+	printf("vision_mode_test_obstructions vstate.test_wall_timeout =%d \n", vstate.test_wall_timeout);
+	fflush(stdout);
+	if (vstate.test_wall_timeout == 0) {
+		if (vstate.test_wall_state > 0) {
+			vision_control_task_restore();
+		} else {
+			vision_control_task_dangerous();
+			VISION_SET_MODE(vstate.mode, VISION_MODE_FWDWALL);
+		}
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_TESTWALL);
+		return;
+	} else
+		vstate.test_wall_timeout--;
+
+	vision_check_obstructions(frame, &wl, &wf, &wr);
+
+	if (wf) vstate.test_wall_state--;
+	else vstate.test_wall_state++;
+
+}
+
+void vision_mode_hide_init(struct v_frame *frame, int target_size)
+{
+	int ret;
+	VISION_SET_MODE(vstate.mode, VISION_MODE_HIDE);
+
+	vision_get_floor_level(frame, &vstate.floor_data, 3);
+	ret = vision_get_way_floor(&vstate.floor_data);
+
+	if (ret > 0) vision_hide_init('L', target_size);
+	else vision_hide_init('R', target_size);
+
+
+}
+
+void vision_mode_hide(struct v_sframe *sframe)
+{
+	int ret;
+
+	if (vstate.mode & VISION_MODE_FWDWALL) {
+		vision_hide(sframe, -1);
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_HIDE);
+	}
+
+	if (vstate.mode & VISION_MODE_TESTWALL) return;
+
+	ret = vision_hide(sframe, 0);
+	if (ret < 0)
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_HIDE);
+
+}
+
+void vision_mode_hide_close(struct v_sframe *sframe)
+{
+	vision_hide(sframe, -1);
+	VISION_RESET_MODE(vstate.mode, VISION_MODE_HIDE);
+}
+
+void vision_mode_idle_init(struct v_frame *frame)
+{
+	int ret;
+	VISION_SET_MODE(vstate.mode, VISION_MODE_IDLE);
+
+	vision_get_floor_level(frame, &vstate.floor_data, 3);
+	ret = vision_get_way_floor(&vstate.floor_data);
+
+	if (ret > 0) vision_idle_init('L');
+	else vision_idle_init('R');
+
+	vstate.idle_timeout = 0;
+}
+
+void vision_mode_idle(struct v_frame *frame)
+{
+	int ret;
+
+	ret = vision_idle(frame, 0);
+	if (ret < 0)
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_IDLE);
+
+}
+
+void vision_mode_background_init()
+{
+	VISION_SET_MODE(vstate.mode, VISION_MODE_BACKGROUND);
+	vstate.tune_background = 60;
+}
+
+void vision_mode_background()
+{
+	vision_tunebackground(&sf_frame);
+	if (vstate.tune_background == 0)
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_BACKGROUND);
+}
+
+void vision_rotate_from_wall(struct v_frame *frame)
+{
+	int ret;
+	LLIST_STRUCT task;
+
+	task.speed = 60;
+	task.timeout = 3;
+	task.state = NULL;
+	task.dist = 90;
+
+	vision_get_floor_level(frame, &vstate.floor_data, 3);
+	ret = vision_get_way_floor(&vstate.floor_data);
+	if (ret > 0) task.dir = 'L';
+	else if (ret < 0) task.dir = 'R';
+	else {
+		task.dist = 180;
+		task.dir = 'L';
+	}
+
+	tasklist_add_tail(&task);
+}
+
+void vision_frame(struct v_frame *frame)
+{
+	char dir, speed;
+	uint32_t wl, wf, wr;
+	uint32_t target_size;
+
+	get_control_state(&dir, &speed);
+
+	get_sframe(frame, &sf_frame);
+
+	printf("[mode = %x; dir = %c]", vstate.mode, dir);
+	fflush(stdout);
+	switch (dir) {
+
+	case 'L':
+	case 'R':
+	case 'B':
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_FWDWALL);
+		vision_check_background(&sf_frame);
+		break;
+
+	case 'F':
+	case 'l':
+	case 'r':
+		vision_check_background(&sf_frame);
+		vision_check_obstructions(frame, &wl, &wf, &wr);
+
+		if (wf) vision_mode_test_obstructions_init();
+		else vstate.test_wall_timeout = 1;
+		break;
+
+	case 'S':
+	default:
+		if (vstate.mode & VISION_MODE_TESTWALL) {
+			vision_mode_test_obstructions(frame);
+
+		}
+
+		if (vstate.mode & VISION_MODE_BACKGROUND) {
+			vision_mode_background();
+		}
+
+		if (vstate.old_direction != 'S') {
+			vision_mode_background_init();
+			vstate.idle_timeout = 0;
+		}
+
+		if (vstate.mode == 0) {
+			target_size = vision_check_targets(&sf_frame, &sf_background);
+			if (target_size)
+				vision_mode_hide_init(frame, target_size);
+		}
+		if ((vstate.mode == 0) && (vstate.idle_timeout > 80)) {
+			vision_mode_idle_init(frame);
+		} else vstate.idle_timeout++;
+		break;
+	};
+
+
+	if (vstate.mode & VISION_MODE_FWDWALL) {
+		vision_rotate_from_wall(frame);
+
+	}
+
+	if (vstate.mode & VISION_MODE_HIDE) {
+		vision_mode_hide(&sf_frame);
+	}
+
+	if (vstate.mode & VISION_MODE_IDLE) {
+		vision_mode_idle(frame);
+	}
+
+	vstate.old_direction = dir;
+
 }

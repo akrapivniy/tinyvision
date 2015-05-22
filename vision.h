@@ -3,6 +3,6 @@
 
 
 #include "vision_core.h"
-int init_vision ();
-void vision_frame (struct v_frame *frame);
+int init_vision();
+void vision_frame(struct v_frame *frame);
 #endif

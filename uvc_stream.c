@@ -40,7 +40,7 @@
 # along with this program; if not, write to the Free Software                  #
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA    #
 #                                                                              #
-*******************************************************************************/
+ *******************************************************************************/
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -67,148 +67,150 @@
 #define SOURCE_VERSION "1.3"
 #define BOUNDARY "arflebarfle"
 
-typedef enum { SNAPSHOT, STREAM } answer_t;
+typedef enum {
+	SNAPSHOT, STREAM
+} answer_t;
 
 /* globals */
-int stop=0, sd;
-int force_delay=0;
+int stop = 0, sd;
+int force_delay = 0;
 struct control_data cd, *cdata;
 
 /* signal fresh frames */
-pthread_mutex_t db        = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t  db_update = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t db = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t db_update = PTHREAD_COND_INITIALIZER;
 
 /* global JPG frame, this is more or less the "database" */
 unsigned char *g_buf = NULL;
 int g_size = 0;
 
 /* thread for clients that connected to this server */
-void *client_thread( void *arg ) {
-  int fd = *((int *)arg);
-  fd_set fds;
-  unsigned char *frame = (unsigned char *)calloc(1, (size_t)cd.videoIn->framesizeIn);
-  int ok = 1, frame_size=0;
-  char buffer[1024] = {0};
-  struct timeval to;
-  answer_t answer = STREAM;
+void *client_thread(void *arg)
+{
+	int fd = *((int *) arg);
+	fd_set fds;
+	unsigned char *frame = (unsigned char *) calloc(1, (size_t) cd.videoIn->framesizeIn);
+	int ok = 1, frame_size = 0;
+	char buffer[1024] = {0};
+	struct timeval to;
+	answer_t answer = STREAM;
 
-  if (arg!=NULL) free(arg); else exit(1);
+	if (arg != NULL) free(arg);
+	else exit(1);
 
-  /* set timeout to 5 seconds */
-  to.tv_sec  = 5;
-  to.tv_usec = 0;
-  FD_ZERO(&fds);
-  FD_SET(fd, &fds);
-  if( select(fd+1, &fds, NULL, NULL, &to) <= 0) {
-    close(fd);
-    free(frame);
-    return NULL;
-  }
-  while ( ok >= 0 && !stop ) {
+	/* set timeout to 5 seconds */
+	to.tv_sec = 5;
+	to.tv_usec = 0;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	if (select(fd + 1, &fds, NULL, NULL, &to) <= 0) {
+		close(fd);
+		free(frame);
+		return NULL;
+	}
+	while (ok >= 0 && !stop) {
 
-    /* having a problem with windows (do we not always) browsers not updating the 
-       stream display, unless the browser cache is disabled - try and implement a delay
-       to allow movement to end before streem goes on - kind of works, but not well enough */
+		/* having a problem with windows (do we not always) browsers not updating the 
+		   stream display, unless the browser cache is disabled - try and implement a delay
+		   to allow movement to end before streem goes on - kind of works, but not well enough */
 
-    if (cd.moved > 0){
-      SLEEP(1,0);
-      cd.moved = 0;
-    }
-    /* wait for fresh frames */
-    pthread_cond_wait(&db_update, &db);
+		if (cd.moved > 0) {
+			SLEEP(1, 0);
+			cd.moved = 0;
+		}
+		/* wait for fresh frames */
+		pthread_cond_wait(&db_update, &db);
 
-    /* read buffer */
-    frame_size = g_size;
-    memcpy(frame, g_buf, frame_size);
+		/* read buffer */
+		frame_size = g_size;
+		memcpy(frame, g_buf, frame_size);
 
-    pthread_mutex_unlock( &db );
+		pthread_mutex_unlock(&db);
 
-    ok = print_picture(fd, frame, frame_size);
-    if( ok < 0 ) break;
-    }
+		ok = print_picture(fd, frame, frame_size);
+		if (ok < 0) break;
+	}
 
-  close(fd);
-  free(frame);
+	close(fd);
+	free(frame);
 
-  return NULL;
+	return NULL;
 }
-
-
 
 /* mind thread  */
-void *mind_thread( void *arg ) {
-    unsigned char *frame = (unsigned char *)calloc(1, (size_t)cd.videoIn->framesizeIn);
-    unsigned char *pixmap = (unsigned char *)calloc(1, (size_t)cd.videoIn->framesizeIn);
-    int frame_size=0;
-    int jpegss;
-    tjhandle jtd ;
-    struct v_frame vframe;
+void *mind_thread(void *arg)
+{
+	unsigned char *frame = (unsigned char *) calloc(1, (size_t) cd.videoIn->framesizeIn);
+	unsigned char *pixmap = (unsigned char *) calloc(1, (size_t) cd.videoIn->framesizeIn);
+	int frame_size = 0;
+	int jpegss;
+	tjhandle jtd;
+	struct v_frame vframe;
 
-    printf("Start thread\n");
-    vframe.pixmap = (unsigned int *)pixmap;
-    jtd = tjInitDecompress();
-  while (!stop ) {
-    /* wait for fresh frames */
-    pthread_cond_wait(&db_update, &db);
-    /* read buffer */
-    frame_size = g_size;
-    memcpy(frame, g_buf, frame_size);
-    pthread_mutex_unlock( &db );
+	printf("Start thread\n");
+	vframe.pixmap = (unsigned int *) pixmap;
+	jtd = tjInitDecompress();
+	while (!stop) {
+		/* wait for fresh frames */
+		pthread_cond_wait(&db_update, &db);
+		/* read buffer */
+		frame_size = g_size;
+		memcpy(frame, g_buf, frame_size);
+		pthread_mutex_unlock(&db);
 
 
-    tjDecompressHeader2(jtd, frame, frame_size, &(vframe.w), &(vframe.h), &jpegss);
-    tjBufSizeYUV (vframe.w, vframe.h, jpegss);
-    tjDecompressToYUV(jtd, frame, frame_size, pixmap, 0);
-    if (jpegss != TJSAMP_422) {
-		printf("Failed: Chrominance subsampling options is %d. \n",jpegss);
-		continue;
+		tjDecompressHeader2(jtd, frame, frame_size, &(vframe.w), &(vframe.h), &jpegss);
+		tjBufSizeYUV(vframe.w, vframe.h, jpegss);
+		tjDecompressToYUV(jtd, frame, frame_size, pixmap, 0);
+		if (jpegss != TJSAMP_422) {
+			printf("Failed: Chrominance subsampling options is %d. \n", jpegss);
+			continue;
 		}
 
-    vision_frame (&vframe);
-  }
+		vision_frame(&vframe);
+	}
 
-    tjDestroy(jtd);
+	tjDestroy(jtd);
 
-  free(frame);
-  free(pixmap);
+	free(frame);
+	free(pixmap);
 
-  return NULL;
+	return NULL;
 }
 
-
-
 /* the single writer thread */
-void *cam_thread( void *arg ) {
-   while( !stop ) {
-    /* grab a frame */
-    if( uvcGrab(cd.videoIn) < 0 ) {
-      fprintf(stderr, "Error grabbing\n");
-      exit(1);
-    }
+void *cam_thread(void *arg)
+{
+	while (!stop) {
+		/* grab a frame */
+		if (uvcGrab(cd.videoIn) < 0) {
+			fprintf(stderr, "Error grabbing\n");
+			exit(1);
+		}
 
-    /* copy frame to global buffer */
-    pthread_mutex_lock( &db );
+		/* copy frame to global buffer */
+		pthread_mutex_lock(&db);
 
-    g_size = cd.videoIn->buf.bytesused;
-    memcpy(g_buf, cd.videoIn->tmpbuffer, cd.videoIn->buf.bytesused);
+		g_size = cd.videoIn->buf.bytesused;
+		memcpy(g_buf, cd.videoIn->tmpbuffer, cd.videoIn->buf.bytesused);
 
-    /* signal fresh_frame */
-    pthread_cond_broadcast(&db_update);
-    pthread_mutex_unlock( &db );
+		/* signal fresh_frame */
+		pthread_cond_broadcast(&db_update);
+		pthread_mutex_unlock(&db);
 
-    /* only use usleep if the fps is below 5, otherwise the overhead is too long */
-    if ( cd.videoIn->fps < 5 ) {
-      usleep(1000*1000/cd.videoIn->fps);
-    }
-  }
+		/* only use usleep if the fps is below 5, otherwise the overhead is too long */
+		if (cd.videoIn->fps < 5) {
+			usleep(1000 * 1000 / cd.videoIn->fps);
+		}
+	}
 
-  return NULL;
+	return NULL;
 }
 
 void help(char *progname)
 {
-  fprintf(stderr, "------------------------------------------------------------------\n");
-  fprintf(stderr, "Usage: %s\n" \
+	fprintf(stderr, "------------------------------------------------------------------\n");
+	fprintf(stderr, "Usage: %s\n" \
                   " [-h | --help ]........: display this help\n" \
                   " [-d | --device ]......: video device to open (your camera)\n" \
                   " [-r | --resolution ]..: 960x720, 640x480, 320x240, 160x120\n" \
@@ -216,66 +218,71 @@ void help(char *progname)
                   " [-p | --port ]........: TCP-port for the server\n" \
                   " [-c | --control_port ]: TCP-port for the motor control server\n" \
                   
-                  " [-v | --version ].....: display version information\n" \
+		" [-v | --version ].....: display version information\n" \
                   " [-b | --background]...: fork to the background, daemon mode\n" \
                   " --disable_control.....: disable the motor control server\n", progname);
-  fprintf(stderr, "------------------------------------------------------------------\n");
+	fprintf(stderr, "------------------------------------------------------------------\n");
 }
 
-void signal_handler(int sigm) {
-  /* signal "stop" to threads */
-  stop = 1;
+void signal_handler(int sigm)
+{
+	/* signal "stop" to threads */
+	stop = 1;
 
-  /* cleanup most important structures */
-  fprintf(stderr, "shutdown...\n");
-  usleep(1000*1000);
-  close_v4l2(cd.videoIn);
-  free(cd.videoIn);
-  if (close (sd) < 0)
-	  perror ("close sd");;
-  pthread_cond_destroy(&db_update);
-  pthread_mutex_destroy(&db);
-  exit(0);
-  return;
+	/* cleanup most important structures */
+	fprintf(stderr, "shutdown...\n");
+	usleep(1000 * 1000);
+	close_v4l2(cd.videoIn);
+	free(cd.videoIn);
+	if (close(sd) < 0)
+		perror("close sd");
+	;
+	pthread_cond_destroy(&db_update);
+	pthread_mutex_destroy(&db);
+	vision_control_task_dangerous();
+	motor(0, 0);
+	exit(0);
+	return;
 }
 
-void daemon_mode(void) {
-  int fr=0;
+void daemon_mode(void)
+{
+	int fr = 0;
 
-  fr = fork();
-  if( fr < 0 ) {
-    fprintf(stderr, "fork() failed\n");
-    exit(1);
-  }
-  if ( fr > 0 ) {
-    exit(0);
-  }
+	fr = fork();
+	if (fr < 0) {
+		fprintf(stderr, "fork() failed\n");
+		exit(1);
+	}
+	if (fr > 0) {
+		exit(0);
+	}
 
-  if( setsid() < 0 ) {
-    fprintf(stderr, "setsid() failed\n");
-    exit(1);
-  }
+	if (setsid() < 0) {
+		fprintf(stderr, "setsid() failed\n");
+		exit(1);
+	}
 
-  fr = fork();
-  if( fr < 0 ) {
-    fprintf(stderr, "fork() failed\n");
-    exit(1);
-  }
-  if ( fr > 0 ) {
-    fprintf(stderr, "forked to background (%d)\n", fr);
-    exit(0);
-  }
+	fr = fork();
+	if (fr < 0) {
+		fprintf(stderr, "fork() failed\n");
+		exit(1);
+	}
+	if (fr > 0) {
+		fprintf(stderr, "forked to background (%d)\n", fr);
+		exit(0);
+	}
 
-  umask(0);
+	umask(0);
 
-  chdir("/");
-  close(0);
-  close(1);
-  close(2);
+	chdir("/");
+	close(0);
+	close(1);
+	close(2);
 
-  open("/dev/null", O_RDWR);
-  dup(0);
-  dup(0);
+	open("/dev/null", O_RDWR);
+	dup(0);
+	dup(0);
 }
 
 /* #########################################################################
@@ -283,220 +290,231 @@ Main
 ######################################################################### */
 int main(int argc, char *argv[])
 {
-  struct sockaddr_in addr;
-  int on=1, disable_control_port = 0;
-  pthread_t client, cam, cntrl, mind, uart_control;
-  char *dev = "/dev/video0";
-  int fps=5, daemon=0;
+	struct sockaddr_in addr;
+	int on = 1, disable_control_port = 0;
+	pthread_t client, cam, cntrl, mind, uart_control;
+	char *dev = "/dev/video0";
+	int fps = 5, daemon = 0;
 
 
-  cd.width=640;
-  cd.height=480;
-   
-  cdata = &cd;  
-  cd.control_port = htons(8081);
-  cd.stream_port = htons(8080);
-  while(1) {
-    int option_index = 0, c=0;
-    static struct option long_options[] = \
+	cd.width = 640;
+	cd.height = 480;
+
+	cdata = &cd;
+	cd.control_port = htons(8081);
+	cd.stream_port = htons(8080);
+	while (1) {
+		int option_index = 0, c = 0;
+		static struct option long_options[] = \
     {
-      {"h", no_argument, 0, 0},
-      {"help", no_argument, 0, 0},
-      {"d", required_argument, 0, 0},
-      {"device", required_argument, 0, 0},
-      {"r", required_argument, 0, 0},
-      {"resolution", required_argument, 0, 0},
-      {"f", required_argument, 0, 0},
-      {"fps", required_argument, 0, 0},
-      {"p", required_argument, 0, 0},
-      {"port", required_argument, 0, 0},
-      {"v", no_argument, 0, 0},
-      {"version", no_argument, 0, 0},
-      {"b", no_argument, 0, 0},
-      {"background", no_argument, 0, 0},
-      {"c", required_argument, 0, 0},
-      {"control_port", required_argument, 0, 0},
-      {"disable_control", no_argument, 0, 0},
-      {"C", no_argument, 0, 0},
-      {"calibrate", no_argument, 0, 0},
-      {0, 0, 0, 0}
-    };
+			{"h", no_argument, 0, 0},
+			{"help", no_argument, 0, 0},
+			{"d", required_argument, 0, 0},
+			{"device", required_argument, 0, 0},
+			{"r", required_argument, 0, 0},
+			{"resolution", required_argument, 0, 0},
+			{"f", required_argument, 0, 0},
+			{"fps", required_argument, 0, 0},
+			{"p", required_argument, 0, 0},
+			{"port", required_argument, 0, 0},
+			{"v", no_argument, 0, 0},
+			{"version", no_argument, 0, 0},
+			{"b", no_argument, 0, 0},
+			{"background", no_argument, 0, 0},
+			{"c", required_argument, 0, 0},
+			{"control_port", required_argument, 0, 0},
+			{"disable_control", no_argument, 0, 0},
+			{"C", no_argument, 0, 0},
+			{"calibrate", no_argument, 0, 0},
+			{0, 0, 0, 0}
+		};
 
-    c = getopt_long_only(argc, argv, "", long_options, &option_index);
+		c = getopt_long_only(argc, argv, "", long_options, &option_index);
 
-    /* no more options to parse */
-    if (c == -1) break;
+		/* no more options to parse */
+		if (c == -1) break;
 
-    /* unrecognized option */
-    if(c=='?'){ help(argv[0]); return 0; }
+		/* unrecognized option */
+		if (c == '?') {
+			help(argv[0]);
+			return 0;
+		}
 
-    switch (option_index) {
-      /* h, help */
-      case 0:
-      case 1:
-        help(argv[0]);
-        return 0;
-        break;
+		switch (option_index) {
+			/* h, help */
+		case 0:
+		case 1:
+			help(argv[0]);
+			return 0;
+			break;
 
-      /* d, device */
-      case 2:
-      case 3:
-        dev = strdup(optarg);
-        break;
+			/* d, device */
+		case 2:
+		case 3:
+			dev = strdup(optarg);
+			break;
 
-      /* r, resolution */
-      case 4:
-      case 5:
-        if ( strcmp("960x720", optarg) == 0 ) { cd.width=960; cd.height=720; }
-        else if ( strcmp("640x480", optarg) == 0 ) { cd.width=640; cd.height=480; }
-        else if ( strcmp("320x240", optarg) == 0 ) { cd.width=320; cd.height=240; }
-        else if ( strcmp("160x120", optarg) == 0 ) { cd.width=160; cd.height=120; }
-        else { 
-              fprintf(stderr, "ignoring unsupported resolution\n");
-        }      
-        break;
+			/* r, resolution */
+		case 4:
+		case 5:
+			if (strcmp("960x720", optarg) == 0) {
+				cd.width = 960;
+				cd.height = 720;
+			} else if (strcmp("640x480", optarg) == 0) {
+				cd.width = 640;
+				cd.height = 480;
+			} else if (strcmp("320x240", optarg) == 0) {
+				cd.width = 320;
+				cd.height = 240;
+			} else if (strcmp("160x120", optarg) == 0) {
+				cd.width = 160;
+				cd.height = 120;
+			} else {
+				fprintf(stderr, "ignoring unsupported resolution\n");
+			}
+			break;
 
-      /* f, fps */
-      case 6:
-      case 7:
-        fps=atoi(optarg);
-        break;
+			/* f, fps */
+		case 6:
+		case 7:
+			fps = atoi(optarg);
+			break;
 
-      /* p, port */
-      case 8:
-      case 9:
-        cd.stream_port=htons(atoi(optarg));
-        break;
+			/* p, port */
+		case 8:
+		case 9:
+			cd.stream_port = htons(atoi(optarg));
+			break;
 
-      /* v, version */
-      case 10:
-      case 11:
-        printf("UVC Streamer Version: %s\n" \
+			/* v, version */
+		case 10:
+		case 11:
+			printf("UVC Streamer Version: %s\n" \
                "Compilation Date....: %s\n" \
                "Compilation Time....: %s\n", SOURCE_VERSION, __DATE__, __TIME__);
-        return 0;
-        break;
+			return 0;
+			break;
 
-      /* v, version */
-      case 12:
-      case 13:
-        daemon=1;
-        break;
-        
-      /* c, control_port */
-      case 14:
-      case 15:
-        cd.control_port=htons(atoi(optarg));
-        break;
-      /* disable_control */  
-      case 16:
-        disable_control_port = 1;
-        break;
-      case 17:
-      case 18:
-        disable_control_port = 1;
-        break;
-      default:
-        help(argv[0]);
-        return 0;
-    }
-  }
+			/* v, version */
+		case 12:
+		case 13:
+			daemon = 1;
+			break;
 
-  /* ignore SIGPIPE (send if transmitting to closed sockets) */
-  signal(SIGPIPE, SIG_IGN);
-  if (signal(SIGINT, signal_handler) == SIG_ERR) {
-    fprintf(stderr, "could not register signal handler\n");
-    exit(1);
-  }
+			/* c, control_port */
+		case 14:
+		case 15:
+			cd.control_port = htons(atoi(optarg));
+			break;
+			/* disable_control */
+		case 16:
+			disable_control_port = 1;
+			break;
+		case 17:
+		case 18:
+			disable_control_port = 1;
+			break;
+		default:
+			help(argv[0]);
+			return 0;
+		}
+	}
 
-  /* fork to the background */
-  if ( daemon ) {
-    daemon_mode();
-  }
+	/* ignore SIGPIPE (send if transmitting to closed sockets) */
+	signal(SIGPIPE, SIG_IGN);
+	if (signal(SIGINT, signal_handler) == SIG_ERR) {
+		fprintf(stderr, "could not register signal handler\n");
+		exit(1);
+	}
 
-  /* allocate webcam datastructure */
-  cd.videoIn = (struct vdIn *) calloc(1, sizeof(struct vdIn));
+	/* fork to the background */
+	if (daemon) {
+		daemon_mode();
+	}
 
-  fprintf(stderr, "Using V4L2 device.....: %s\n", dev);
-  fprintf(stderr, "Resolution............: %i x %i\n", cdata->width, cdata->height);
-  fprintf(stderr, "frames per second.....: %i\n", fps);
-  fprintf(stderr, "TCP port..............: %i\n", ntohs(cd.stream_port));
-  if (disable_control_port == 1){
-    fprintf(stderr, "motor control server..: disabled\n");
-  } else {
-    fprintf(stderr, "motor control TCP port: %i\n", ntohs(cd.control_port));
-  }  
+	/* allocate webcam datastructure */
+	cd.videoIn = (struct vdIn *) calloc(1, sizeof(struct vdIn));
+
+	fprintf(stderr, "Using V4L2 device.....: %s\n", dev);
+	fprintf(stderr, "Resolution............: %i x %i\n", cdata->width, cdata->height);
+	fprintf(stderr, "frames per second.....: %i\n", fps);
+	fprintf(stderr, "TCP port..............: %i\n", ntohs(cd.stream_port));
+	if (disable_control_port == 1) {
+		fprintf(stderr, "motor control server..: disabled\n");
+	} else {
+		fprintf(stderr, "motor control TCP port: %i\n", ntohs(cd.control_port));
+	}
 
 
-  /* open video device and prepare data structure */
-  cd.video_dev = init_videoIn(cd.videoIn, dev, cd.width, cd.height, fps, V4L2_PIX_FMT_MJPEG, 1);
-  if (cd.video_dev < 0) {
-    fprintf(stderr, "init_VideoIn failed\n");
-    exit(1);
-  }
-  
-  /* open socket for server */
-  sd = socket(PF_INET, SOCK_STREAM, 0);
-  if ( sd < 0 ) {
-    fprintf(stderr, "socket failed\n");
-    exit(1);
-  }
+	/* open video device and prepare data structure */
+	cd.video_dev = init_videoIn(cd.videoIn, dev, cd.width, cd.height, fps, V4L2_PIX_FMT_MJPEG, 1);
+	if (cd.video_dev < 0) {
+		fprintf(stderr, "init_VideoIn failed\n");
+		exit(1);
+	}
 
-  /* ignore "socket already in use" errors */
-  if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
-    perror("setsockopt(SO_REUSEADDR) failed");
-    exit(1);
-  }
+	/* open socket for server */
+	sd = socket(PF_INET, SOCK_STREAM, 0);
+	if (sd < 0) {
+		fprintf(stderr, "socket failed\n");
+		exit(1);
+	}
 
-  /* configure server address to listen to all local IPs */
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = cd.stream_port;
-  addr.sin_addr.s_addr = htonl(INADDR_ANY);
-  if ( bind(sd, (struct sockaddr*)&addr, sizeof(addr)) != 0 ) {
-    fprintf(stderr, "bind failed\n");
-    perror("Bind");
-    exit(1);
-  }
+	/* ignore "socket already in use" errors */
+	if (setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on)) < 0) {
+		perror("setsockopt(SO_REUSEADDR) failed");
+		exit(1);
+	}
 
-  /* start listening on socket */
-  if ( listen(sd, 10) != 0 ) {
-    fprintf(stderr, "listen failed\n");
-    exit(1);
-  }
+	/* configure server address to listen to all local IPs */
+	memset(&addr, 0, sizeof(addr));
+	addr.sin_family = AF_INET;
+	addr.sin_port = cd.stream_port;
+	addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	if (bind(sd, (struct sockaddr*) &addr, sizeof(addr)) != 0) {
+		fprintf(stderr, "bind failed\n");
+		perror("Bind");
+		exit(1);
+	}
 
-  /* start to read the camera, push picture buffers into global buffer */
-  cd.videoIn->tmpbuffer = (unsigned char *) calloc(1, (size_t)cd.videoIn->framesizeIn);
-                  g_buf = (unsigned char *) calloc(1, (size_t)cd.videoIn->framesizeIn);
-  
-  vision_control_init(); //must be first to call;
+	/* start listening on socket */
+	if (listen(sd, 10) != 0) {
+		fprintf(stderr, "listen failed\n");
+		exit(1);
+	}
 
-  pthread_create(&cam, 0, cam_thread, NULL);
-  pthread_detach(cam);
+	/* start to read the camera, push picture buffers into global buffer */
+	cd.videoIn->tmpbuffer = (unsigned char *) calloc(1, (size_t) cd.videoIn->framesizeIn);
+	g_buf = (unsigned char *) calloc(1, (size_t) cd.videoIn->framesizeIn);
 
-  pthread_create(&mind, 0, mind_thread, NULL);
-  pthread_detach(mind);
+	vision_control_init(); //must be first to call;
 
-  init_vision ();
-  init_controller ();
-	  
-  pthread_create(&uart_control, 0, &uart_control_read, NULL);
-  pthread_detach(uart_control);
+	pthread_create(&cam, 0, cam_thread, NULL);
+	pthread_detach(cam);
 
-  /* start control server */
-  if (disable_control_port == 0){
-    pthread_create(&cntrl, NULL, &uvcstream_control, cdata);
-    pthread_detach(cntrl);
-  }  
+	pthread_create(&mind, 0, mind_thread, NULL);
+	pthread_detach(mind);
 
-  /* create a child for every client that connects */
-  while ( 1 ) {
-    int *pfd = (int *)calloc(1, sizeof(int));
-    *pfd = accept(sd, 0, 0);
-    pthread_create(&client, NULL, &client_thread, pfd);
-    pthread_detach(client);
-    
-  }
+	init_vision();
+	init_controller();
 
-  return 0;
+	pthread_create(&uart_control, 0, &uart_control_read, NULL);
+	pthread_detach(uart_control);
+
+	/* start control server */
+	if (disable_control_port == 0) {
+		pthread_create(&cntrl, NULL, &uvcstream_control, cdata);
+		pthread_detach(cntrl);
+	}
+
+	/* create a child for every client that connects */
+	while (1) {
+		int *pfd = (int *) calloc(1, sizeof(int));
+		*pfd = accept(sd, 0, 0);
+		pthread_create(&client, NULL, &client_thread, pfd);
+		pthread_detach(client);
+
+	}
+
+	return 0;
 }

@@ -248,8 +248,8 @@ struct uvc_device;
  */
 struct uvc_streaming_control {
 	__u16 bmHint;
-	__u8  bFormatIndex;
-	__u8  bFrameIndex;
+	__u8 bFormatIndex;
+	__u8 bFrameIndex;
 	__u32 dwFrameInterval;
 	__u16 wKeyFrameRate;
 	__u16 wPFrameRate;
@@ -259,10 +259,10 @@ struct uvc_streaming_control {
 	__u32 dwMaxVideoFrameSize;
 	__u32 dwMaxPayloadTransferSize;
 	__u32 dwClockFrequency;
-	__u8  bmFramingInfo;
-	__u8  bPreferedVersion;
-	__u8  bMinVersion;
-	__u8  bMaxVersion;
+	__u8 bmFramingInfo;
+	__u8 bPreferedVersion;
+	__u8 bMinVersion;
+	__u8 bMaxVersion;
 };
 
 struct uvc_menu_info {
@@ -284,11 +284,11 @@ struct uvc_control_info {
 
 /* Data types for UVC control data */
 enum uvc_control_data_type {
-        UVC_CTRL_DATA_TYPE_RAW = 0,
-        UVC_CTRL_DATA_TYPE_SIGNED,
-        UVC_CTRL_DATA_TYPE_UNSIGNED,
-        UVC_CTRL_DATA_TYPE_BOOLEAN,
-        UVC_CTRL_DATA_TYPE_ENUM,
+	UVC_CTRL_DATA_TYPE_RAW = 0,
+	UVC_CTRL_DATA_TYPE_SIGNED,
+	UVC_CTRL_DATA_TYPE_UNSIGNED,
+	UVC_CTRL_DATA_TYPE_BOOLEAN,
+	UVC_CTRL_DATA_TYPE_ENUM,
 	UVC_CTRL_DATA_TYPE_BITMASK,
 };
 
@@ -315,9 +315,9 @@ struct uvc_control {
 	struct uvc_entity *entity;
 	struct uvc_control_info *info;
 
-	__u8 index;	/* Used to match the uvc_control entry with a uvc_control_info. */
+	__u8 index; /* Used to match the uvc_control entry with a uvc_control_info. */
 	__u8 dirty : 1,
-	     loaded : 1;
+	loaded : 1;
 
 	__u8 *data;
 };
@@ -346,39 +346,40 @@ struct uvc_entity {
 	char name[64];
 
 	union {
+
 		struct {
 			__u16 wObjectiveFocalLengthMin;
 			__u16 wObjectiveFocalLengthMax;
 			__u16 wOcularFocalLength;
-			__u8  bControlSize;
-			__u8  *bmControls;
+			__u8 bControlSize;
+			__u8 *bmControls;
 		} camera;
 
 		struct {
-			__u8  bSourceID;
+			__u8 bSourceID;
 		} output;
 
 		struct {
-			__u8  bSourceID;
+			__u8 bSourceID;
 			__u16 wMaxMultiplier;
-			__u8  bControlSize;
-			__u8  *bmControls;
-			__u8  bmVideoStandards;
+			__u8 bControlSize;
+			__u8 *bmControls;
+			__u8 bmVideoStandards;
 		} processing;
 
 		struct {
-			__u8  bNrInPins;
-			__u8  *baSourceID;
+			__u8 bNrInPins;
+			__u8 *baSourceID;
 		} selector;
 
 		struct {
-		        __u8  guidExtensionCode[16];
-		        __u8  bNumControls;
-		        __u8  bNrInPins;
-		        __u8  *baSourceID;
-		        __u8  bControlSize;
-		        __u8  *bmControls;
-		        __u8  *bmControlsType;
+			__u8 guidExtensionCode[16];
+			__u8 bNumControls;
+			__u8 bNrInPins;
+			__u8 *baSourceID;
+			__u8 bControlSize;
+			__u8 *bmControls;
+			__u8 *bmControlsType;
 		} extension;
 	};
 
@@ -387,14 +388,14 @@ struct uvc_entity {
 };
 
 struct uvc_frame {
-	__u8  bFrameIndex;
-	__u8  bmCapabilities;
+	__u8 bFrameIndex;
+	__u8 bmCapabilities;
 	__u16 wWidth;
 	__u16 wHeight;
 	__u32 dwMinBitRate;
 	__u32 dwMaxBitRate;
 	__u32 dwMaxVideoFrameBufferSize;
-	__u8  bFrameIntervalType;
+	__u8 bFrameIntervalType;
 	__u32 dwDefaultFrameInterval;
 	__u32 *dwFrameInterval;
 };
@@ -457,11 +458,11 @@ enum uvc_stream_state {
 };
 
 enum uvc_buffer_state {
-	UVC_BUF_STATE_IDLE       = 0,
-	UVC_BUF_STATE_QUEUED     = 1,
-	UVC_BUF_STATE_ACTIVE     = 2,
-	UVC_BUF_STATE_DONE       = 3,
-	UVC_BUF_STATE_ERROR      = 4,
+	UVC_BUF_STATE_IDLE = 0,
+	UVC_BUF_STATE_QUEUED = 1,
+	UVC_BUF_STATE_ACTIVE = 2,
+	UVC_BUF_STATE_DONE = 3,
+	UVC_BUF_STATE_ERROR = 4,
 };
 
 struct uvc_buffer {
@@ -544,8 +545,8 @@ struct uvc_device {
 };
 
 enum uvc_handle_state {
-	UVC_HANDLE_PASSIVE	= 0,
-	UVC_HANDLE_ACTIVE	= 1,
+	UVC_HANDLE_PASSIVE = 0,
+	UVC_HANDLE_ACTIVE = 1,
 };
 
 struct uvc_fh {
@@ -554,13 +555,13 @@ struct uvc_fh {
 };
 
 struct uvc_driver {
-        struct usb_driver driver;
+	struct usb_driver driver;
 
-	struct mutex open_mutex;	/* protects from open/disconnect race */
+	struct mutex open_mutex; /* protects from open/disconnect race */
 
-        struct list_head devices;	/* struct uvc_device list */
-	struct list_head controls;	/* struct uvc_control_info list */
-	struct mutex ctrl_mutex;	/* protects controls and devices lists */
+	struct list_head devices; /* struct uvc_device list */
+	struct list_head controls; /* struct uvc_control_info list */
+	struct mutex ctrl_mutex; /* protects controls and devices lists */
 };
 
 /* ------------------------------------------------------------------------
@@ -607,18 +608,18 @@ extern void uvc_delete(struct kref *kref);
 /* Video buffers queue management. */
 extern void uvc_queue_init(struct uvc_video_queue *queue);
 extern int uvc_alloc_buffers(struct uvc_video_queue *queue,
-		unsigned int nbuffers, unsigned int buflength);
+	unsigned int nbuffers, unsigned int buflength);
 extern int uvc_free_buffers(struct uvc_video_queue *queue);
 extern void uvc_query_buffer(struct uvc_buffer *buf,
-		struct v4l2_buffer *v4l2_buf);
+	struct v4l2_buffer *v4l2_buf);
 extern int uvc_queue_buffer(struct uvc_video_queue *queue,
-		struct v4l2_buffer *v4l2_buf);
+	struct v4l2_buffer *v4l2_buf);
 extern int uvc_dequeue_buffer(struct uvc_video_queue *queue,
-		struct v4l2_buffer *v4l2_buf, int nonblocking);
+	struct v4l2_buffer *v4l2_buf, int nonblocking);
 extern int uvc_queue_enable(struct uvc_video_queue *queue, int enable);
 extern void uvc_queue_cancel(struct uvc_video_queue *queue);
 extern struct uvc_buffer *uvc_queue_next_buffer(struct uvc_video_queue *queue,
-		struct uvc_buffer *buf);
+	struct uvc_buffer *buf);
 
 /* V4L2 interface */
 extern struct file_operations uvc_fops;
@@ -627,18 +628,18 @@ extern struct file_operations uvc_fops;
 extern int uvc_video_init(struct uvc_video_device *video);
 extern int uvc_video_enable(struct uvc_video_device *video, int enable);
 extern int uvc_probe_video(struct uvc_video_device *video,
-		struct uvc_streaming_control *probe);
+	struct uvc_streaming_control *probe);
 extern int uvc_query_ctrl(struct uvc_device *dev, __u8 query, __u8 unit,
-		__u8 intfnum, __u8 cs, void *data, __u16 size);
+	__u8 intfnum, __u8 cs, void *data, __u16 size);
 extern int uvc_set_video_ctrl(struct uvc_video_device *video,
-		struct uvc_streaming_control *ctrl, int probe);
+	struct uvc_streaming_control *ctrl, int probe);
 extern int uvc_init_status(struct uvc_device *dev);
 
 /* Controls */
 extern struct uvc_control *uvc_find_control(struct uvc_video_device *video,
-		__u32 v4l2_id, struct uvc_control_mapping **mapping);
+	__u32 v4l2_id, struct uvc_control_mapping **mapping);
 extern int uvc_query_v4l2_ctrl(struct uvc_video_device *video,
-		struct v4l2_queryctrl *v4l2_ctrl);
+	struct v4l2_queryctrl *v4l2_ctrl);
 
 extern void uvc_ctrl_add_info(struct uvc_control_info *info);
 extern int uvc_ctrl_init_device(struct uvc_device *dev);
@@ -647,27 +648,29 @@ extern void uvc_ctrl_init(void);
 
 extern int uvc_ctrl_begin(struct uvc_video_device *video);
 extern int __uvc_ctrl_commit(struct uvc_video_device *video, int rollback);
+
 static inline int uvc_ctrl_commit(struct uvc_video_device *video)
 {
 	return __uvc_ctrl_commit(video, 0);
 }
+
 static inline int uvc_ctrl_rollback(struct uvc_video_device *video)
 {
 	return __uvc_ctrl_commit(video, 1);
 }
 
 extern int uvc_ctrl_get(struct uvc_video_device *video,
-		struct v4l2_ext_control *xctrl);
+	struct v4l2_ext_control *xctrl);
 extern int uvc_ctrl_set(struct uvc_video_device *video,
-		struct v4l2_ext_control *xctrl);
+	struct v4l2_ext_control *xctrl);
 
 /* Utility functions */
 extern void uvc_simplify_fraction(uint32_t *numerator, uint32_t *denominator,
-		unsigned int n_terms, unsigned int threshold);
+	unsigned int n_terms, unsigned int threshold);
 extern uint32_t uvc_fraction_to_interval(uint32_t numerator,
-		uint32_t denominator);
+	uint32_t denominator);
 extern struct usb_host_endpoint *uvc_find_endpoint(
-		struct usb_host_interface *alts, __u8 epaddr);
+	struct usb_host_interface *alts, __u8 epaddr);
 
 #endif /* __KERNEL__ */
 

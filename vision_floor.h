@@ -24,23 +24,24 @@ struct vision_floor_histogram {
 };
 
 struct vision_floor_data {
-    int w,fw,h;
-    int floor_data[VISION_MAX_WIDTH*2];
-    int *floor_prev;
-    int *floor_current;
-    int floor_speed[VISION_MAX_WIDTH];
-    int floor_next[VISION_MAX_WIDTH];
-    int floor_state[VISION_MAX_WIDTH];
-    struct vision_floor_color color;
-    struct vision_floor_histogram hist;
+	int w, fw, h;
+	int floor_data[VISION_MAX_WIDTH * 2];
+	int *floor_prev;
+	int *floor_current;
+	int floor_speed[VISION_MAX_WIDTH];
+	int floor_next[VISION_MAX_WIDTH];
+	int floor_state[VISION_MAX_WIDTH];
+	struct vision_floor_color color;
+	struct vision_floor_histogram hist;
 };
 
-int vision_init_floor_data (struct vision_floor_data *fd);
-int *vision_get_floor_level (struct v_frame *frame, struct vision_floor_data *fd, int floor_delta_threshold);
-int vision_get_use_floor (struct vision_floor_data *fd, int wide);
-int vision_get_way_floor (struct vision_floor_data *fd);
-int direct_floor_color (struct v_frame *frame, int *floor_level, struct vision_floor_histogram *fh, struct vision_floor_color *color);
-
+int vision_init_floor_data(struct vision_floor_data *fd);
+int *vision_get_floor_level(struct v_frame *frame, struct vision_floor_data *fd, int floor_delta_threshold);
+int vision_get_use_floor(struct vision_floor_data *fd, int wide);
+int vision_get_way_floor(struct vision_floor_data *fd);
+int direct_floor_color(struct v_frame *frame, int *floor_level, struct vision_floor_histogram *fh, struct vision_floor_color *color);
+int direct_floor_level_min(struct v_frame *frame, int *floor_level);
+void vision_get_wall_from_floor(struct vision_floor_data *fd, uint32_t *wl_dist, uint32_t *wf_dist, uint32_t *wr_dist);
 
 #endif	/* VISION_FLOOR_H */
 

@@ -19,7 +19,7 @@
 # along with this program; if not, write to the Free Software                  #
 # Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA    #
 #                                                                              #
-*******************************************************************************/
+ *******************************************************************************/
 
 #include "utils.h"
 #include "color.h"
@@ -36,18 +36,19 @@
 
 int is_huffman(unsigned char *buf)
 {
-  unsigned char *ptbuf;
-  int i = 0;
-  ptbuf = buf;
-  while (((ptbuf[0] << 8) | ptbuf[1]) != 0xffda) {
-    if (i++ > 2048)
-      return 0;
-    if (((ptbuf[0] << 8) | ptbuf[1]) == 0xffc4)
-      return 1;
-    ptbuf++;
-  }
-  return 0;
+	unsigned char *ptbuf;
+	int i = 0;
+	ptbuf = buf;
+	while (((ptbuf[0] << 8) | ptbuf[1]) != 0xffda) {
+		if (i++ > 2048)
+			return 0;
+		if (((ptbuf[0] << 8) | ptbuf[1]) == 0xffc4)
+			return 1;
+		ptbuf++;
+	}
+	return 0;
 }
+
 /*
 int print_picture(FILE* file, unsigned char *buf, int size)
 {
@@ -72,20 +73,20 @@ int print_picture(FILE* file, unsigned char *buf, int size)
 
 int print_picture(int fd, unsigned char *buf, int size)
 {
-    unsigned char *ptdeb, *ptcur = buf;
-    int sizein;
+	unsigned char *ptdeb, *ptcur = buf;
+	int sizein;
 
-    if (!is_huffman(buf)) {
-        ptdeb = ptcur = buf;
-        while (((ptcur[0] << 8) | ptcur[1]) != 0xffc0)
-            ptcur++;
-        sizein = ptcur - ptdeb;
-        if( write(fd, buf, sizein) <= 0) return -1;
-        if( write(fd, dht_data, DHT_SIZE) <= 0) return -1;
-        if( write(fd, ptcur, size - sizein) <= 0) return -1;
-    } else {
-        if( write(fd, ptcur, size) <= 0) return -1;
-    }
+	if (!is_huffman(buf)) {
+		ptdeb = ptcur = buf;
+		while (((ptcur[0] << 8) | ptcur[1]) != 0xffc0)
+			ptcur++;
+		sizein = ptcur - ptdeb;
+		if (write(fd, buf, sizein) <= 0) return -1;
+		if (write(fd, dht_data, DHT_SIZE) <= 0) return -1;
+		if (write(fd, ptcur, size - sizein) <= 0) return -1;
+	} else {
+		if (write(fd, ptcur, size) <= 0) return -1;
+	}
 
-    return 0;
+	return 0;
 }

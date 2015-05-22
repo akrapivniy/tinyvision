@@ -1,16 +1,16 @@
 /* 
-*      control.c
-*
-*      HTTP Control interface for uvc_stream
-*      
-*      2007 Lucas van Staden (lvs@softhome.net) 
-*
-*      Some of this code is based on the webhttpd.c code from the motion project
-*
-*      Copyright 2004-2005 by Angel Carpintero  (ack@telefonica.net)
-*      This software is distributed under the GNU Public License Version 2
-*
-*/
+ *      control.c
+ *
+ *      HTTP Control interface for uvc_stream
+ *      
+ *      2007 Lucas van Staden (lvs@softhome.net) 
+ *
+ *      Some of this code is based on the webhttpd.c code from the motion project
+ *
+ *      Copyright 2004-2005 by Angel Carpintero  (ack@telefonica.net)
+ *      This software is distributed under the GNU Public License Version 2
+ *
+ */
 
 #define SLEEP(seconds, nanoseconds) {              \
                 struct timespec tv;                \
@@ -21,13 +21,13 @@
 
 #define INCPANTILT 64 
 
-  struct control_data {
-    int control_port, stream_port;
-    struct vdIn *videoIn;
-    int width, height;
-    int minmaxfound, panmin, tiltmin, panmax, tiltmax, pan_angle, tilt_angle;
-    int moved, video_dev, snapshot;
-  };
+struct control_data {
+	int control_port, stream_port;
+	struct vdIn *videoIn;
+	int width, height;
+	int minmaxfound, panmin, tiltmin, panmax, tiltmax, pan_angle, tilt_angle;
+	int moved, video_dev, snapshot;
+};
 
 struct coord {
 	int x;

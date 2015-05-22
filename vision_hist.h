@@ -17,26 +17,27 @@
 struct histogram8 {
 	uint8_t h[8];
 };
+
 struct histogram32 {
 	uint32_t h[8];
 };
 
 struct v_histogram {
-    struct histogram8 *u;
-    struct histogram8 *v;
-    struct histogram8 *y;
-    int w,h;
-    int res_w,res_h;
+	struct histogram8 *u;
+	struct histogram8 *v;
+	struct histogram8 *y;
+	int w, h;
+	int res_w, res_h;
 };
 
 struct v_histogram_storage {
-    struct histogram8 y[VISION_HISTOGRAM_SIZE];
-    struct histogram8 u[VISION_HISTOGRAM_SIZE];
-    struct histogram8 v[VISION_HISTOGRAM_SIZE];
+	struct histogram8 y[VISION_HISTOGRAM_SIZE];
+	struct histogram8 u[VISION_HISTOGRAM_SIZE];
+	struct histogram8 v[VISION_HISTOGRAM_SIZE];
 };
 
 
-void get_histogram (struct v_frame *frame, struct v_histogram *hframe);
+void get_histogram(struct v_frame *frame, struct v_histogram *hframe);
 
 
 #endif	/* VISION_HYST_H */

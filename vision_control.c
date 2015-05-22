@@ -3,8 +3,9 @@
 #include <signal.h>
 #include <time.h>
 #include <pthread.h>
+#include <string.h>
 #include "vision_control.h"
-
+#include "low_control.h"
 
 
 /*
@@ -16,6 +17,7 @@ LLIST_STRUCT *llist = NULL;
 LLIST_STRUCT *llist_free = NULL;
 pthread_mutex_t llist_lock;
 int vision_task_timeout = 0;
+LLIST_STRUCT current_task = {0};
 
 static inline LLIST_STRUCT *llist_get_free()
 {
@@ -152,7 +154,7 @@ int tasklist_add_tail(LLIST_STRUCT *src)
 
 exit:
 	pthread_mutex_unlock(&llist_lock);
-	vision_control_task_start ();
+	vision_control_task_start();
 	return err;
 }
 
@@ -175,7 +177,7 @@ int tasklist_add_head(LLIST_STRUCT *src)
 
 exit:
 	pthread_mutex_unlock(&llist_lock);
-	vision_control_task_start ();
+	vision_control_task_start();
 	return err;
 }
 
@@ -215,7 +217,7 @@ exit:
 
 int is_tasklist_empty()
 {
-	return ((llist == NULL)? 1 : 0);
+	return((llist == NULL) ? 1 : 0);
 }
 
 int tasklist_init()
@@ -226,6 +228,7 @@ int tasklist_init()
 	if (pthread_mutex_init(&llist_lock, NULL) != 0)
 		return -1;
 
+	return 0;
 }
 
 int tasklist_release_free()
@@ -237,7 +240,7 @@ int tasklist_release_free()
 
 	while (llist_free) {
 		l = llist_free;
-		llist_free = (LLIST_STRUCT *)l->next;
+		llist_free = (LLIST_STRUCT *) l->next;
 		free(l);
 	};
 
@@ -249,32 +252,102 @@ exit:
 int tasklist_close()
 {
 	pthread_mutex_destroy(&llist_lock);
+	return 0;
 }
 
 int vision_control_task_next()
 {
-	LLIST_STRUCT task;
+	if (current_task.state)
+		*(current_task.state) = VTASK_COMPLITE;
 
-	if (tasklist_get_next(&task) < 0)
+	vision_task_timeout = 0;
+
+	if (tasklist_get_next(&current_task) < 0)
 		return 0;
-
-	motor_set_control(task.dir, task.speed, task.dist, &vision_control_task_next);
-	vision_task_timeout = task.timeout+1;
-	printf ("[get timesout = %d]",task.timeout);fflush(stdout);
+	if (current_task.state)
+		*current_task.state = VTASK_START;
+	motor_set_control(current_task.dir, current_task.speed, current_task.dist, &vision_control_task_next);
+	vision_task_timeout = current_task.timeout + 1;
+	printf("[get timesout = %d]", current_task.timeout);
+	fflush(stdout);
 	return 0;
+}
+
+int vision_control_task_next_fwdskip()
+{
+	if (current_task.state)
+		*(current_task.state) = VTASK_ABORT;
+
+	vision_task_timeout = 0;
+
+	do {
+		if (tasklist_get_next(&current_task) < 0)
+			return 0;
+
+		if ((current_task.dir == 'F') || (current_task.dir == 'l') || (current_task.dir == 'r')) {
+			if (current_task.state)
+				*(current_task.state) = VTASK_ABORT;
+			continue;
+		}
+	} while (0);
+
+	if (current_task.state)
+		*current_task.state = VTASK_START;
+	motor_set_control(current_task.dir, current_task.speed, current_task.dist, &vision_control_task_next);
+	vision_task_timeout = current_task.timeout + 1;
+	printf("[get timesout = %d]", current_task.timeout);
+	fflush(stdout);
+	return 0;
+}
+
+int tasklist_fixed_current_task(int key, char dir, int speed)
+{
+	if (current_task.state != VTASK_START) return -1;
+	current_task.dir = dir;
+	current_task.speed = speed;
+	motor_set_control(current_task.dir, current_task.speed, current_task.dist, &vision_control_task_next);
 }
 
 int vision_control_task_start()
 {
 	if (vision_task_timeout == 0)
 		vision_control_task_next();
+
+	return 0;
 }
 
 int vision_control_task_stop()
 {
 	vision_task_timeout = 0;
 	motor_set_control('S', 0, 0, NULL);
-	tasklist_clean ();
+	tasklist_clean();
+
+	return 0;
+}
+
+int vision_control_task_pause()
+{
+	vision_task_timeout = 0;
+	motor_set_control('S', 0, 0, NULL);
+
+	return 0;
+}
+
+int vision_control_task_dangerous()
+{
+	vision_task_timeout = 0;
+	motor_set_control('S', 0, 0, NULL);
+	vision_control_task_next_fwdskip();
+
+	return 0;
+}
+
+int vision_control_task_restore()
+{
+	motor_set_control(current_task.dir, current_task.speed, current_task.dist, &vision_control_task_next);
+	vision_task_timeout = current_task.timeout + 1;
+
+	return 0;
 }
 
 static void* vision_control_timeout(void *p)
@@ -285,14 +358,15 @@ static void* vision_control_timeout(void *p)
 	sigaddset(&sigset, SIGUSR1);
 
 	while (!sigwait(&sigset, &sig)) {
-		printf ("[%d]",vision_task_timeout);fflush(stdout);
+		//		printf ("[%d]",vision_task_timeout);fflush(stdout);
 		if (vision_task_timeout) {
 			vision_task_timeout--;
 		} else continue;
 		if (vision_task_timeout == 1) {
 			vision_control_task_next();
-		} 
+		}
 	}
+	return NULL;
 }
 
 int vision_control_init()
@@ -320,4 +394,6 @@ int vision_control_init()
 	timer_settime(timer, 0, &ts, NULL);
 
 	tasklist_init();
+
+	return 0;
 }

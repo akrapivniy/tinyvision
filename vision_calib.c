@@ -112,7 +112,7 @@ int vision_calibrate_finish(struct v_calibrate_state *c)
 
 int vision_calibrate(struct v_calibrate_state *c, struct v_sframe *his_frame)
 {
-	struct v_target targets[100];
+/*	struct v_target targets[100];
 	unsigned int target_count;
 	int target_map[VISION_SFRAME_SIZE];
 	int timeout, y, uv;
@@ -208,4 +208,5 @@ int vision_calibrate(struct v_calibrate_state *c, struct v_sframe *his_frame)
 	//fire (c->x, c->y, 1);
 
 	return 0;
+ * */
 }

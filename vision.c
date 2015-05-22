@@ -15,7 +15,7 @@
 #include "vision_hide.h"
 #include "vision_target.h"
 #include "vision.h"
-
+#include "vision_debug.h"
 
 #define VISION_MODE_BACKGROUND	 (1<<0)
 #define VISION_MODE_HIDE	 (1<<1)
@@ -120,7 +120,7 @@ int vision_load_config()
 	if (fd < 0) return -1;
 	read(fd, &vconfig, sizeof(struct v_config));
 	close(fd);
-	printf("Load config from file\n");
+	debug_init("Load config from file\n");
 	return 0;
 }
 
@@ -131,7 +131,7 @@ int vision_save_config()
 	if (fd < 0) return -1;
 	write(fd, &vconfig, sizeof(struct v_config));
 	close(fd);
-	printf("Save config to file\n");
+	debug_init("Save config to file\n");
 	return 0;
 }
 
@@ -184,8 +184,7 @@ void vision_tunebackground(struct v_sframe *sframe)
 
 	count = compare_sframe(sframe, &sf_dyn_background, &uvdiff, &ydiff, 5, 20);
 
-	printf("count = %d \n", count);
-	fflush(stdout);
+	debug_process ("count = %d", count);
 
 	if ((uvdiff < 2)&&(ydiff < 5)&&(count < ((sframe->w * sframe->h) / 2))) {
 		if (vstate.use_dyn_background == 1) {
@@ -193,15 +192,11 @@ void vision_tunebackground(struct v_sframe *sframe)
 			vstate.tune_background = 0;
 			return;
 		}
-		printf("+");
-		fflush(stdout);
 		vstate.use_dyn_background--;
 		return;
 	} else {
 		vstate.use_dyn_background = 20;
 		exchange_storage(&sf_dyn_background, sframe);
-		printf("-");
-		fflush(stdout);
 	}
 }
 
@@ -220,8 +215,7 @@ void vision_check_obstructions(struct v_frame *frame, uint32_t *wl, uint32_t *wf
 	vision_get_floor_level(frame, &vstate.floor_data, 3);
 	vision_get_wall_from_floor(&vstate.floor_data, wl, wf, wr);
 
-	printf("[%d:%d:%d]", *wl, *wf, *wr);
-	fflush(stdout);
+	debug_process("distance [%d:%d:%d]", *wl, *wf, *wr);
 	if (*wl > (vstate.floor_data.h - 2))
 		*wl = 1;
 	else *wl = 0;
@@ -241,8 +235,7 @@ void vision_check_background(struct v_sframe *sframe)
 
 	count = compare_sframe(sframe, &sf_lastframe, &uvdiff, &ydiff, 2, 5);
 	copy_storage(&sf_lastframe, sframe);
-	printf("vision_check_background count=%d, uvdiff=%d,  ydiff=%d \n", count, uvdiff, ydiff);
-	fflush(stdout);
+	debug_process("count=%d, uvdiff=%d,  ydiff=%d", count, uvdiff, ydiff);
 
 	if (count < 5)
 		vstate.check_background_state++;
@@ -253,16 +246,14 @@ void vision_check_background(struct v_sframe *sframe)
 	if (vstate.check_background_state > 5) {
 		vision_control_task_dangerous();
 		VISION_SET_MODE(vstate.mode, VISION_MODE_FWDWALL);
-		printf("vision_check_background ALERT! \n");
-		fflush(stdout);
+		debug_process ("ALERT!");
 	}
 
 }
 
 void vision_mode_test_obstructions_init()
 {
-	printf("vision_mode_test_obstructions_init \n");
-	fflush(stdout);
+	debug_process ("start");
 
 	if (vstate.test_wall_timeout) {
 		vstate.test_wall_timeout--;
@@ -279,8 +270,7 @@ void vision_mode_test_obstructions(struct v_frame *frame)
 {
 	uint32_t wl, wf, wr;
 
-	printf("vision_mode_test_obstructions vstate.test_wall_timeout =%d \n", vstate.test_wall_timeout);
-	fflush(stdout);
+	debug_process("test_wall_timeout =%d ", vstate.test_wall_timeout);
 	if (vstate.test_wall_timeout == 0) {
 		if (vstate.test_wall_state > 0) {
 			vision_control_task_restore();
@@ -406,7 +396,7 @@ void vision_frame(struct v_frame *frame)
 
 	get_sframe(frame, &sf_frame);
 
-	printf("[mode = %x; dir = %c]", vstate.mode, dir);
+	debug_process("[mode = %x; dir = %c]", vstate.mode, dir);
 	fflush(stdout);
 	switch (dir) {
 

@@ -90,8 +90,8 @@ void vision_idle_movefwd()
 
 	task.dir = 'F';
 	task.speed = 60;
-	task.dist = 60;
-	task.timeout = 5;
+	task.dist = 600;
+	task.timeout = 10;
 	task.state = NULL;
 
 	tasklist_add_tail(&task);
@@ -140,10 +140,15 @@ int vision_idle(struct v_frame *frame, int mode)
 	case 5:
 	case 6:
 	case 7:
+	case 8:
+	case 9:
+	case 10:
+	case 11:
+	case 12:
 		vision_idle_search_floor(frame);
 		vision_idle_turn_next();
 		break;
-	case 8:
+	case 13:
 		vision_idle_search_floor(frame);
 		vision_idle_turn_to_space();
 		break;

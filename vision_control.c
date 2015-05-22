@@ -306,6 +306,7 @@ int tasklist_fixed_current_task(int key, char dir, int speed)
 	current_task.dir = dir;
 	current_task.speed = speed;
 	motor_set_control(current_task.dir, current_task.speed, current_task.dist, &vision_control_task_next);
+	return 0;
 }
 
 int vision_control_task_start()

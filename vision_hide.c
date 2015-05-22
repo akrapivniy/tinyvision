@@ -10,6 +10,7 @@
 
 #define VISION_HIDE_RUN  0
 #define VISION_HIDE_BACK 32
+#define VISION_HIDE_BACK2 34
 #define VISION_HIDE_END 0xff
 
 struct vision_hide_state {
@@ -214,11 +215,40 @@ void vision_hide_moveback()
 	vhide.phase = 0xff;
 }
 
+void vision_hide_moveback2()
+{
+	LLIST_STRUCT task;
+
+	task.dir = 'F';
+	task.speed = 80;
+	task.dist = 10;
+	task.timeout = 3;
+	task.state = NULL;
+
+	tasklist_add_tail(&task);
+
+	task.dir = 'B';
+	task.speed = 80;
+	task.dist = 20;
+	task.timeout = 3;
+	task.state = NULL;
+
+	tasklist_add_tail(&task);
+
+	vhide.phase = 0xff;
+}
+
+
+
 void vision_hide_init(char rotate, int target_size)
 {
 
-	if (target_size < 20)
-		vhide.phase = VISION_HIDE_BACK;
+	if (target_size < 20) {
+		if (target_size&1)
+			vhide.phase = VISION_HIDE_BACK;
+		else
+			vhide.phase = VISION_HIDE_BACK2;
+	}
 	else vhide.phase = VISION_HIDE_RUN;
 
 	vhide.wait_task = 0;
@@ -285,6 +315,10 @@ int vision_hide(struct v_sframe *sframe, int mode)
 
 	case VISION_HIDE_BACK:
 		vision_hide_moveback();
+		return -1;
+		break;
+	case VISION_HIDE_BACK2:
+		vision_hide_moveback2();
 		return -1;
 		break;
 	default:

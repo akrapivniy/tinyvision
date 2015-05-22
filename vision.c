@@ -23,6 +23,7 @@
 #define VISION_MODE_TESTWALL	 (1<<3)
 #define VISION_MODE_FWDWALL	 (1<<4)
 #define VISION_MODE_IDLE	 (1<<5)
+#define VISION_MODE_MAD		 (1<<6)
 #define VISION_MODE_FOLLOWME	 (1<<6)
 
 #define VISION_SET_MODE(var,mode) var |= mode;
@@ -38,9 +39,14 @@ struct v_state {
 	int test_wall_timeout;
 	int test_wall_state;
 
+	int fwd_wall_timeout;
+	int fwd_wall_state;
+
 	int check_background_state;
 
 	int idle_timeout;
+
+	int mad_timeout;
 
 	int save_floor_color;
 	int use_floor_color;
@@ -184,7 +190,7 @@ void vision_tunebackground(struct v_sframe *sframe)
 
 	count = compare_sframe(sframe, &sf_dyn_background, &uvdiff, &ydiff, 5, 20);
 
-	debug_process ("count = %d", count);
+	debug_process("count = %d", count);
 
 	if ((uvdiff < 2)&&(ydiff < 5)&&(count < ((sframe->w * sframe->h) / 2))) {
 		if (vstate.use_dyn_background == 1) {
@@ -246,14 +252,14 @@ void vision_check_background(struct v_sframe *sframe)
 	if (vstate.check_background_state > 5) {
 		vision_control_task_dangerous();
 		VISION_SET_MODE(vstate.mode, VISION_MODE_FWDWALL);
-		debug_process ("ALERT!");
+		debug_process("ALERT!");
 	}
 
 }
 
 void vision_mode_test_obstructions_init()
 {
-	debug_process ("start");
+	debug_process("start");
 
 	if (vstate.test_wall_timeout) {
 		vstate.test_wall_timeout--;
@@ -351,6 +357,43 @@ void vision_mode_idle(struct v_frame *frame)
 
 }
 
+void vision_mode_mad_init(struct v_frame *frame)
+{
+	int ret;
+	
+	debug_process ("mad mode init");
+	VISION_SET_MODE(vstate.mode, VISION_MODE_MAD);
+
+	vision_get_floor_level(frame, &vstate.floor_data, 3);
+	ret = vision_get_way_floor(&vstate.floor_data);
+
+	if (ret > 0) vision_mad_init('L');
+	else vision_mad_init('R');
+
+	vstate.mad_timeout = 0;
+}
+
+void vision_mode_mad(struct v_frame *frame)
+{
+	int ret;
+	int alert = 0;
+	
+	debug_process ("mad mode control");
+	
+	if (vstate.mode & VISION_MODE_FWDWALL) {
+		vision_get_floor_level(frame, &vstate.floor_data, 3);
+		ret = vision_get_way_floor(&vstate.floor_data);
+
+		if (ret > 0) alert = 'L';
+		else alert = 'R';
+	}
+	
+	ret = vision_mad(frame, alert);
+	if (ret < 0)
+		VISION_RESET_MODE(vstate.mode, VISION_MODE_IDLE);
+
+}
+
 void vision_mode_background_init()
 {
 	VISION_SET_MODE(vstate.mode, VISION_MODE_BACKGROUND);
@@ -369,6 +412,10 @@ void vision_rotate_from_wall(struct v_frame *frame)
 	int ret;
 	LLIST_STRUCT task;
 
+	if (vstate.fwd_wall_timeout)
+		vstate.fwd_wall_state++;
+	else vstate.fwd_wall_state = 0;
+
 	task.speed = 60;
 	task.timeout = 3;
 	task.state = NULL;
@@ -383,7 +430,20 @@ void vision_rotate_from_wall(struct v_frame *frame)
 		task.dir = 'L';
 	}
 
+	if (vstate.fwd_wall_state) {
+		if (vstate.fwd_wall_state & 1) {
+			if (vstate.fwd_wall_state & 2) task.dir = 'L';
+			else task.dir = 'R';
+			task.dist = 180;
+		} else {
+			task.dir = 'B';
+			task.dist = 10;
+		}
+	}
+
 	tasklist_add_tail(&task);
+
+	vstate.fwd_wall_timeout = 5;
 }
 
 void vision_frame(struct v_frame *frame)
@@ -441,13 +501,19 @@ void vision_frame(struct v_frame *frame)
 		if ((vstate.mode == 0) && (vstate.idle_timeout > 80)) {
 			vision_mode_idle_init(frame);
 		} else vstate.idle_timeout++;
+
+		if ((vstate.mode == 0) && (vstate.mad_timeout > 600)) {
+			vision_mode_mad_init(frame);
+		} else vstate.mad_timeout++;
 		break;
 	};
 
 
 	if (vstate.mode & VISION_MODE_FWDWALL) {
 		vision_rotate_from_wall(frame);
-
+	} else {
+		if (vstate.fwd_wall_timeout)
+			vstate.fwd_wall_timeout--;
 	}
 
 	if (vstate.mode & VISION_MODE_HIDE) {
@@ -458,6 +524,9 @@ void vision_frame(struct v_frame *frame)
 		vision_mode_idle(frame);
 	}
 
-	vstate.old_direction = dir;
+	if (vstate.mode & VISION_MODE_MAD) {
+		vision_mode_mad(frame);
+	}
 
+	vstate.old_direction = dir;
 }

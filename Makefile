@@ -25,7 +25,7 @@ LFLAGS += -lpthread -ldl -lturbojpeg -lm -lrt
 
 
 OBJECTS=uvc_stream.o color.o utils.o v4l2uvc.o control.o low_control.o \
-	vision.o vision_calib.o vision_core.o wifi.c vision_map.c vision_floor.c vision_sframe.c vision_hist.c vision_control.c vision_hide.c vision_target.c vision_idle.c
+	vision.o vision_calib.o vision_core.o wifi.c vision_map.c vision_floor.c vision_sframe.c vision_hist.c vision_control.c vision_hide.c vision_target.c vision_idle.c vision_mad.c
 
 all: uga_buga install
 
